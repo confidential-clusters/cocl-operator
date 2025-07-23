@@ -1,0 +1,20 @@
+[package]
+name = "operator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.41", features = ["derive"] }
+crds = { path = "../crds" }
+env_logger = "0.11.8"
+
+futures-util = "0.3.31"
+kube = { version = "1.1.0", features = ["runtime"] }
+lo = "0.0.1"
+log = "0.4.27"
+thiserror = "2.0.12"
+tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
+k8s-openapi = "0.25.0"
+openssl = "0.10.73"
+base64 = "0.22.1"
+anyhow = "1.0.98"
