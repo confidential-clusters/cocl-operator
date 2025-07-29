@@ -34,21 +34,14 @@ pub struct Trustee {
     namespaced,
     plural = "kbsconfigs"
 )]
+#[serde(rename_all = "camelCase")]
 pub struct KbsConfigSpec {
-    #[serde(rename = "kbsConfigMapName")]
     pub kbs_config_map_name: String,
-    #[serde(rename = "kbsAuthSecretName")]
     pub kbs_auth_secret_name: String,
-    #[serde(rename = "kbsDeploymentType")]
     pub kbs_deployment_type: String,
-    #[serde(rename = "kbsRvpsRefValuesConfigMapName")]
     pub kbs_rvps_ref_values_config_map_name: String,
-    #[serde(rename = "kbsSecretResources")]
     pub kbs_secret_resources: Vec<String>,
-    #[serde(rename = "kbsHttpsKeySecretName")]
     pub kbs_https_key_secret_name: String,
-    #[serde(rename = "kbsHttpsCertSecretName")]
     pub kbs_https_cert_secret_name: String,
-    #[serde(rename = "kbsResourcePolicyConfigMapName")]
     pub kbs_resource_policy_config_map_name: String,
 }
