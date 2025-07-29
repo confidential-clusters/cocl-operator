@@ -23,7 +23,7 @@ use std::{
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
     /// Output directory to save rendered YAML
     #[arg(long, default_value = "manifests")]
     output_dir: PathBuf,

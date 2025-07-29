@@ -1,11 +1,10 @@
-use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::PostParams;
 use kube::{Api, Client, Error};
 use log::info;
-use openssl::pkey::{PKey, Private};
+use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
 
