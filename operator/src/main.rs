@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
 use kube::runtime::reflector::Lookup;
@@ -10,7 +10,7 @@ use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{api::ListParams, Api, Client};
+use kube::{Api, Client, api::ListParams};
 
 use log::{error, info};
 use thiserror::Error;
@@ -146,14 +146,10 @@ async fn main() -> Result<()> {
     let context = Arc::new(ContextData {
         client: client.clone(),
     });
-    info!(
-        "Confidential clusters operator",
-    );
+    info!("Confidential clusters operator",);
     let cl = Api::<ConfidentialCluster>::all(client.clone());
 
-    tokio::spawn(install_trustee_configuration(
-        client.clone(),
-    ));
+    tokio::spawn(install_trustee_configuration(client.clone()));
     Controller::new(cl, watcher::Config::default())
         .run::<_, ContextData>(reconcile, error_policy, context)
         .for_each(|res| async move {

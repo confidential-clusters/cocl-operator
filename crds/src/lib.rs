@@ -3,12 +3,14 @@ use kube::Resource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(CustomResource,Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[kube(group = "confidential-containers.io", 
-    version = "v1alpha1", 
-    kind = "ConfidentialCluster", 
-    namespaced, 
-    plural = "confidentialclusters")]
+#[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[kube(
+    group = "confidential-containers.io",
+    version = "v1alpha1",
+    kind = "ConfidentialCluster",
+    namespaced,
+    plural = "confidentialclusters"
+)]
 pub struct ConfidentialClusterSpec {
     pub trustee: Trustee,
 }

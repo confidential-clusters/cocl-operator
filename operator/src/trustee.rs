@@ -1,15 +1,19 @@
+use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
-use kube::{Api, Client, Error};
-use kube::api::PostParams;
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use kube::api::PostParams;
+use kube::{Api, Client, Error};
 use log::info;
 use openssl::pkey::{PKey, Private};
 use std::collections::BTreeMap;
 use std::fs;
-use base64::{engine::general_purpose, Engine as _};
-use anyhow::Result;
 
-pub async fn generate_kbs_auth_public_key(client:Client, namespace: &str, secret_name: &str) -> anyhow::Result<()> {
+pub async fn generate_kbs_auth_public_key(
+    client: Client,
+    namespace: &str,
+    secret_name: &str,
+) -> anyhow::Result<()> {
     let keypair = PKey::generate_ed25519()?;
 
     let private_pem = keypair.private_key_to_pem_pkcs8()?;
@@ -21,7 +25,10 @@ pub async fn generate_kbs_auth_public_key(client:Client, namespace: &str, secret
     let public_key_b64 = general_purpose::STANDARD.encode(&public_key);
 
     let mut data = BTreeMap::new();
-    data.insert("publicKey".to_string(), k8s_openapi::ByteString(public_key_b64.into()));
+    data.insert(
+        "publicKey".to_string(),
+        k8s_openapi::ByteString(public_key_b64.into()),
+    );
 
     let secret = Secret {
         metadata: kube::api::ObjectMeta {
@@ -48,7 +55,11 @@ pub async fn generate_kbs_https_certificate(namespace: &str, secret_name: &str) 
     todo!();
 }
 
-pub async fn generate_kbs_configuration(client:Client, namespace: &str, name: &str) -> anyhow::Result<()> {
+pub async fn generate_kbs_configuration(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> anyhow::Result<()> {
     let kbs_config_toml = r#"[http_server]
 sockets = ["0.0.0.0:8080"]
 insecure_http = false
@@ -92,10 +103,7 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"
 "#;
 
     let mut data = BTreeMap::new();
-    data.insert(
-        "kbs-config.toml".to_string(),
-        kbs_config_toml.to_string(),
-    );
+    data.insert("kbs-config.toml".to_string(), kbs_config_toml.to_string());
 
     let config_map = ConfigMap {
         metadata: kube::api::ObjectMeta {
@@ -108,7 +116,10 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps.create(&PostParams::default(), &config_map).await {
+    match config_maps
+        .create(&PostParams::default(), &config_map)
+        .await
+    {
         Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
         Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
         Err(e) => return Err(e.into()),
@@ -117,7 +128,11 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"
     Ok(())
 }
 
-pub async fn generate_reference_values(client: Client, namespace: &str, name: &str) -> anyhow::Result<()> {
+pub async fn generate_reference_values(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> anyhow::Result<()> {
     let reference_values_json = r#"[
     ]"#;
 
@@ -138,7 +153,10 @@ pub async fn generate_reference_values(client: Client, namespace: &str, name: &s
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps.create(&PostParams::default(), &config_map).await {
+    match config_maps
+        .create(&PostParams::default(), &config_map)
+        .await
+    {
         Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
         Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
         Err(e) => return Err(e.into()),
@@ -172,7 +190,11 @@ pub async fn generate_secret(client: Client, namespace: &str, name: &str) -> any
     Ok(())
 }
 
-pub async fn generate_resource_policy(client: Client, namespace: &str, name: &str) -> anyhow::Result<()> {
+pub async fn generate_resource_policy(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> anyhow::Result<()> {
     let policy_rego = r#"package policy
 default allow = true
 "#;
@@ -190,7 +212,10 @@ default allow = true
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps.create(&PostParams::default(), &config_map).await {
+    match config_maps
+        .create(&PostParams::default(), &config_map)
+        .await
+    {
         Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
         Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
         Err(e) => return Err(e.into()),
@@ -199,7 +224,12 @@ default allow = true
     Ok(())
 }
 
-pub async fn generate_kbs(client: Client, namespace: &str, trustee: &Trustee, secret: &str) -> anyhow::Result<()> {
+pub async fn generate_kbs(
+    client: Client,
+    namespace: &str,
+    trustee: &Trustee,
+    secret: &str,
+) -> anyhow::Result<()> {
     let labels = BTreeMap::from([
         (
             "app.kubernetes.io/name".to_string(),
@@ -248,7 +278,9 @@ pub async fn generate_kbs(client: Client, namespace: &str, trustee: &Trustee, se
         .await
     {
         Ok(s) => info!("Created KbsConfig {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("KbsConfig {} already exists", trustee.kbs_config_name),
+        Err(Error::Api(ae)) if ae.code == 409 => {
+            info!("KbsConfig {} already exists", trustee.kbs_config_name)
+        }
         Err(e) => return Err(e.into()),
     }
 

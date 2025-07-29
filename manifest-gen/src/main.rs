@@ -81,9 +81,7 @@ fn generate_operator(args: &Args) -> Result<()> {
                     containers: vec![Container {
                         name: name.to_string(),
                         image: Some(args.image.clone()),
-                        command: Some(vec![
-                            "/usr/bin/operator".to_string(),
-                        ]),
+                        command: Some(vec!["/usr/bin/operator".to_string()]),
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -228,7 +226,7 @@ fn generate_operator(args: &Args) -> Result<()> {
         cluster_role_yaml,
         cluster_role_binding_yaml,
         trustee_role_yaml,
-        trustee_role_binding_yaml
+        trustee_role_binding_yaml,
     );
 
     fs::write(&output_path, combined_yaml)?;
