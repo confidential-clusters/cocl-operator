@@ -59,47 +59,7 @@ pub async fn generate_kbs_configuration(
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let kbs_config_toml = r#"[http_server]
-sockets = ["0.0.0.0:8080"]
-insecure_http = false
-private_key = "/etc/https-key/https.key"
-certificate = "/etc/https-cert/https.crt"
-
-[admin]
-insecure_api = true
-auth_public_key = "/etc/auth-secret/publicKey"
-
-[attestation_token]
-insecure_key = true
-attestation_token_type = "CoCo"
-
-[attestation_service]
-type = "coco_as_builtin"
-work_dir = "/opt/confidential-containers/attestation-service"
-policy_engine = "opa"
-
-[attestation_service.attestation_token_broker]
-type = "Ear"
-policy_dir = "/opt/confidential-containers/attestation-service/policies"
-
-[attestation_service.attestation_token_config]
-duration_min = 5
-
-[attestation_service.rvps_config]
-type = "BuiltIn"
-
-[attestation_service.rvps_config.storage]
-type = "LocalJson"
-file_path = "/opt/confidential-containers/rvps/reference-values/reference-values.json"
-
-[[plugins]]
-name = "resource"
-type = "LocalFs"
-dir_path = "/opt/confidential-containers/kbs/repository"
-
-[policy_engine]
-policy_path = "/opt/confidential-containers/opa/policy.rego"
-"#;
+    let kbs_config_toml = include_str!("kbs-config.toml");
 
     let mut data = BTreeMap::new();
     data.insert("kbs-config.toml".to_string(), kbs_config_toml.to_string());
