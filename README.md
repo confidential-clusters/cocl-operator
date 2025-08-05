@@ -38,3 +38,31 @@ make REGISTRY=localhost:5000 manifests
 make install-trustee
 make install
 ```
+
+### Test
+
+```bash
+kubectl apply -f - << EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kbs-client
+  namespace: operators
+spec:
+  containers:
+  - name: kbs-client
+    image: quay.io/confidential-containers/kbs-client:v0.13.0
+    imagePullPolicy: IfNotPresent
+    command:
+      - sleep
+      - "360000"
+    env:
+      - name: RUST_LOG
+        value:  none
+EOF
+```
+
+```bash
+# kubectl exec -it kbs-client -n operators -- kbs-client --url http://kbs-service:8080 get-resource --path default/test-secret/key | base64 -d
+test
+```
