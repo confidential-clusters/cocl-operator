@@ -116,6 +116,20 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create the resource policy configmap: {e}"),
     }
 
+    match trustee::generate_attestation_policy(
+        client.clone(),
+        &trustee_namespace,
+        &cocl.spec.trustee.attestation_policy,
+    )
+    .await
+    {
+        Ok(_) => info!(
+            "Generate configmap for the attestation policy: {}",
+            cocl.spec.trustee.attestation_policy
+        ),
+        Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
+    }
+
     // TODO: remove, right now only for testing
     let secret = "test-secret".to_string();
     match trustee::generate_secret(client.clone(), &trustee_namespace, &secret).await {

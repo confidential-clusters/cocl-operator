@@ -43,4 +43,5 @@ pub struct KbsConfigSpec {
     pub kbs_https_key_secret_name: String,
     pub kbs_https_cert_secret_name: String,
     pub kbs_resource_policy_config_map_name: String,
+    pub kbs_attestation_policy_config_map_name: String,
 }
