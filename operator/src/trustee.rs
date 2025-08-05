@@ -208,6 +208,38 @@ default allow = true
     Ok(())
 }
 
+pub async fn generate_attestation_policy(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> anyhow::Result<()> {
+    let policy_rego = include_str!("tpm.rego");
+    let mut data = BTreeMap::new();
+    data.insert("default_cpu.rego".to_string(), policy_rego.to_string());
+
+    let config_map = ConfigMap {
+        metadata: kube::api::ObjectMeta {
+            name: Some(name.to_string()),
+            namespace: Some(namespace.to_string()),
+            ..Default::default()
+        },
+        data: Some(data),
+        ..Default::default()
+    };
+
+    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
+    match config_maps
+        .create(&PostParams::default(), &config_map)
+        .await
+    {
+        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
+        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
+        Err(e) => return Err(e.into()),
+    }
+
+    Ok(())
+}
+
 pub async fn generate_kbs(
     client: Client,
     namespace: &str,
@@ -253,6 +285,7 @@ pub async fn generate_kbs(
             kbs_https_key_secret_name: HTTPS_KEY.to_string(),
             kbs_https_cert_secret_name: HTTPS_CERT.to_string(),
             kbs_resource_policy_config_map_name: trustee.resource_policy.clone(),
+            kbs_attestation_policy_config_map_name: trustee.attestation_policy.clone(),
         },
     };
 
