@@ -18,7 +18,7 @@ manifests-dir:
 manifests: tools
 	target/debug/manifest-gen --output-dir manifests \
 		--image $(IMAGE) \
-		--trustee-namespace trustee
+		--trustee-namespace operators
 
 cluster-up:
 	scripts/create-cluster-kind.sh

@@ -40,7 +40,7 @@ pub struct Args {
     namespace: String,
 
     /// Trustee namespace where to install trustee configuration
-    #[arg(long, default_value = "trustee")]
+    #[arg(long, default_value = "operators")]
     trustee_namespace: String,
 }
 
