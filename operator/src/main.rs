@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
 use kube::runtime::{
@@ -81,6 +81,11 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
             cocl.spec.trustee.kbs_configuration
         ),
         Err(e) => error!("Failed to create the KBS configuration configmap: {e}"),
+    }
+
+    match trustee::generate_kbs_https_certificate(client.clone(), &trustee_namespace).await {
+        Ok(_) => info!("Generated HTTPS certificates for the KBS"),
+        Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
     match trustee::generate_reference_values(

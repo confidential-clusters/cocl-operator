@@ -8,6 +8,9 @@ use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
 
+const HTTPS_KEY: &str = "kbs-https-key";
+const HTTPS_CERT: &str = "kbs-https-certificate";
+
 pub async fn generate_kbs_auth_public_key(
     client: Client,
     namespace: &str,
@@ -49,9 +52,31 @@ pub async fn generate_kbs_auth_public_key(
     Ok(())
 }
 
+pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> anyhow::Result<()> {
+    let secrets: Api<Secret> = Api::namespaced(client, namespace);
+    for (name, key) in [(HTTPS_KEY, "https.key"), (HTTPS_CERT, "https.crt")] {
+        // Dummy secret, TODO actual authentication (#2)
+        let map = BTreeMap::from([(
+            key.to_string(),
+            k8s_openapi::ByteString("Zm9vYmFyCg==".into()),
+        )]);
+        let secret = Secret {
+            metadata: kube::api::ObjectMeta {
+                name: Some(name.to_string()),
+                namespace: Some(namespace.to_string()),
+                ..Default::default()
+            },
+            data: Some(map),
+            ..Default::default()
+        };
+        match secrets.create(&PostParams::default(), &secret).await {
+            Ok(s) => info!("Create secret {:?}", s.metadata.name),
+            Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {name} already exists"),
+            Err(e) => return Err(e.into()),
+        }
+    }
 
-pub async fn generate_kbs_https_certificate(namespace: &str, secret_name: &str) -> anyhow::Result<()> {
-    todo!();
+    Ok(())
 }
 
 pub async fn generate_kbs_configuration(
@@ -225,8 +250,8 @@ pub async fn generate_kbs(
             kbs_deployment_type: "AllInOneDeployment".to_string(),
             kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
             kbs_secret_resources: vec![secret.to_string()],
-            kbs_https_key_secret_name: "kbs-https-key".to_string(),
-            kbs_https_cert_secret_name: "kbs-https-certificate".to_string(),
+            kbs_https_key_secret_name: HTTPS_KEY.to_string(),
+            kbs_https_cert_secret_name: HTTPS_CERT.to_string(),
             kbs_resource_policy_config_map_name: trustee.resource_policy.clone(),
         },
     };
