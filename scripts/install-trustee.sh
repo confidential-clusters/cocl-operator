@@ -2,7 +2,7 @@
 
 OP_FRMWK_VERSION=0.31.0
 
-source ./common.sh
+source scripts/common.sh
 
 scripts/kubeconfig.sh
 export KUBECONFIG=$(pwd)/.kubeconfig
