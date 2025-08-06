@@ -23,7 +23,7 @@ use std::{
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
     /// Output directory to save rendered YAML
     #[arg(long, default_value = "manifests")]
     output_dir: PathBuf,
@@ -40,7 +40,7 @@ struct Args {
     namespace: String,
 
     /// Trustee namespace where to install trustee configuration
-    #[arg(long, default_value = "trustee")]
+    #[arg(long, default_value = "operators")]
     trustee_namespace: String,
 }
 
@@ -81,9 +81,7 @@ fn generate_operator(args: &Args) -> Result<()> {
                     containers: vec![Container {
                         name: name.to_string(),
                         image: Some(args.image.clone()),
-                        command: Some(vec![
-                            "/usr/bin/operator".to_string(),
-                        ]),
+                        command: Some(vec!["/usr/bin/operator".to_string()]),
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -220,16 +218,16 @@ fn generate_operator(args: &Args) -> Result<()> {
     let trustee_role_yaml = serde_yaml::to_string(&trustee_role)?;
     let trustee_role_binding_yaml = serde_yaml::to_string(&trustee_role_binding)?;
 
-    let combined_yaml = format!(
-        "{}\n---\n{}\n---\n{}\n---\n{}\n---\n{}\n---\n{}\n---\n{}",
+    let combined_yaml = [
         ns_yaml,
         operator_yaml,
         sa_yaml,
         cluster_role_yaml,
         cluster_role_binding_yaml,
         trustee_role_yaml,
-        trustee_role_binding_yaml
-    );
+        trustee_role_binding_yaml,
+    ]
+    .join("\n---\n");
 
     fs::write(&output_path, combined_yaml)?;
 

@@ -1,16 +1,14 @@
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{Context, Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
-use kube::runtime::reflector::Lookup;
 use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{api::ListParams, Api, Client};
+use kube::{Api, Client, api::ListParams};
 
 use log::{error, info};
 use thiserror::Error;
@@ -40,16 +38,16 @@ async fn list_confidential_clusters(client: Client) -> anyhow::Result<Confidenti
                 "Found ConfidentialCluster: {}",
                 item.metadata.name.as_deref().unwrap_or("<no name>"),
             );
-            return Ok(item.deref().clone());
+            return Ok(item.clone());
         }
         _ => bail!("too many confidential cluster resources defined in the namespace"),
     }
 }
 
-async fn reconcile(g: Arc<ConfidentialCluster>, _ctx: Arc<ContextData>) -> Result<Action, Error> {
+async fn reconcile(_g: Arc<ConfidentialCluster>, _ctx: Arc<ContextData>) -> Result<Action, Error> {
     Ok(Action::requeue(Duration::from_secs(300)))
 }
-fn error_policy(obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<ContextData>) -> Action {
+fn error_policy(_obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<ContextData>) -> Action {
     Action::requeue(Duration::from_secs(60))
 }
 
@@ -83,6 +81,11 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
             cocl.spec.trustee.kbs_configuration
         ),
         Err(e) => error!("Failed to create the KBS configuration configmap: {e}"),
+    }
+
+    match trustee::generate_kbs_https_certificate(client.clone(), &trustee_namespace).await {
+        Ok(_) => info!("Generated HTTPS certificates for the KBS"),
+        Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
     match trustee::generate_reference_values(
@@ -146,14 +149,10 @@ async fn main() -> Result<()> {
     let context = Arc::new(ContextData {
         client: client.clone(),
     });
-    info!(
-        "Confidential clusters operator",
-    );
+    info!("Confidential clusters operator",);
     let cl = Api::<ConfidentialCluster>::all(client.clone());
 
-    tokio::spawn(install_trustee_configuration(
-        client.clone(),
-    ));
+    tokio::spawn(install_trustee_configuration(client.clone()));
     Controller::new(cl, watcher::Config::default())
         .run::<_, ContextData>(reconcile, error_policy, context)
         .for_each(|res| async move {
