@@ -131,7 +131,7 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
     }
 
     // TODO: remove, right now only for testing
-    let secret = "test-secret".to_string();
+    let secret = "rootdecrypt".to_string();
     match trustee::generate_secret(client.clone(), &trustee_namespace, &secret).await {
         Ok(_) => info!("Generate test secret",),
         Err(e) => error!("Failed to create test secret: {e}"),
