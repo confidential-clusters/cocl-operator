@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
@@ -7,6 +8,8 @@ use log::info;
 use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
+
+use crate::reference_values;
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
@@ -126,8 +129,30 @@ pub async fn generate_reference_values(
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let reference_values_json = r#"[
-    ]"#;
+    let reference_values_in_json = include_str!("reference-values-in.json");
+    let mut reference_values_in = match serde_json::from_str(reference_values_in_json)? {
+        serde_json::Value::Object(vals) => vals,
+        _ => return Err(anyhow!("Reference values had unexpected shape")),
+    };
+    reference_values_in.insert(
+        "svn".to_string(),
+        serde_json::Value::String("1".to_string()),
+    );
+    let reference_values = reference_values_in
+        .iter()
+        .map(|(name, val)| match val {
+            serde_json::Value::String(value) => Ok(reference_values::ReferenceValue {
+                name: format!("tpm_{name}"),
+                expired: "2099-12-31T23:59:59Z".to_string(),
+                hash_value: reference_values::ReferenceHashValue {
+                    alg: "sha256".to_string(),
+                    value: value.to_string(),
+                },
+            }),
+            _ => Err(anyhow!("Reference values had unexpected data type")),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let reference_values_json = serde_json::to_string(&reference_values)?;
 
     let mut data = BTreeMap::new();
     data.insert(

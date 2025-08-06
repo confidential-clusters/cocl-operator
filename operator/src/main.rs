@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
 use kube::runtime::{
@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use crds::ConfidentialCluster;
 mod trustee;
+mod reference_values;
 
 #[derive(Debug, Error)]
 enum Error {}
