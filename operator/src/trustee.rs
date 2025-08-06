@@ -152,7 +152,10 @@ pub async fn generate_reference_values(
 // TODO: this function needs to be removed, right now it is only for testing the resource
 pub async fn generate_secret(client: Client, namespace: &str, name: &str) -> anyhow::Result<()> {
     let mut data = BTreeMap::new();
-    data.insert("key".to_string(), k8s_openapi::ByteString(b"test".to_vec()));
+    data.insert(
+        "key1".to_string(),
+        k8s_openapi::ByteString(b"test".to_vec()),
+    );
 
     let secret = Secret {
         metadata: kube::api::ObjectMeta {
