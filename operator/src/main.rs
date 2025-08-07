@@ -69,10 +69,10 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create the secret authentication key: {e}"),
     }
 
-    match trustee::generate_kbs_configuration(
+    match trustee::generate_kbs_configurations(
         client.clone(),
         &trustee_namespace,
-        &cocl.spec.trustee.kbs_configuration,
+        &cocl.spec.trustee,
     )
     .await
     {
