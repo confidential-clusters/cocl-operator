@@ -18,6 +18,8 @@ pub struct ConfidentialClusterSpec {
 pub struct Trustee {
     pub namespace: String,
     pub kbs_configuration: String,
+    pub as_configuration: String,
+    pub rvps_configuration: String,
     pub attestation_policy: String,
     pub resource_policy: String,
     pub reference_values: String,
@@ -36,6 +38,8 @@ pub struct Trustee {
 #[serde(rename_all = "camelCase")]
 pub struct KbsConfigSpec {
     pub kbs_config_map_name: String,
+    pub kbs_as_config_map_name: String,
+    pub kbs_rvps_config_map_name: String,
     pub kbs_auth_secret_name: String,
     pub kbs_deployment_type: String,
     pub kbs_rvps_ref_values_config_map_name: String,

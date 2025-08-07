@@ -79,34 +79,43 @@ pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> 
     Ok(())
 }
 
-pub async fn generate_kbs_configuration(
+pub async fn generate_kbs_configurations(
     client: Client,
     namespace: &str,
-    name: &str,
+    trustee: &Trustee,
 ) -> anyhow::Result<()> {
-    let kbs_config_toml = include_str!("kbs-config.toml");
-
-    let mut data = BTreeMap::new();
-    data.insert("kbs-config.toml".to_string(), kbs_config_toml.to_string());
-
-    let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(data),
-        ..Default::default()
-    };
-
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
-        .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
+
+    let kbs_config = include_str!("kbs-config.toml");
+    let as_config = include_str!("as-config.json");
+    let rvps_config = include_str!("rvps-config.json");
+
+    for (filename, content, configmap) in [
+        ("kbs-config.toml", kbs_config, &trustee.kbs_configuration),
+        ("as-config.json", as_config, &trustee.as_configuration),
+        ("rvps-config.json", rvps_config, &trustee.rvps_configuration),
+    ] {
+        let data = BTreeMap::from([(filename.to_string(), content.to_string())]);
+        let config_map = ConfigMap {
+            metadata: kube::api::ObjectMeta {
+                name: Some(configmap.to_string()),
+                namespace: Some(namespace.to_string()),
+                ..Default::default()
+            },
+            data: Some(data),
+            ..Default::default()
+        };
+
+        match config_maps
+            .create(&PostParams::default(), &config_map)
+            .await
+        {
+            Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
+            Err(Error::Api(ae)) if ae.code == 409 => {
+                info!("ConfigMap {} already exists", configmap)
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
     Ok(())
@@ -281,8 +290,10 @@ pub async fn generate_kbs(
         },
         spec: KbsConfigSpec {
             kbs_config_map_name: trustee.kbs_configuration.clone(),
+            kbs_as_config_map_name: trustee.as_configuration.clone(),
+            kbs_rvps_config_map_name: trustee.rvps_configuration.clone(),
             kbs_auth_secret_name: trustee.kbs_auth_key.clone(),
-            kbs_deployment_type: "AllInOneDeployment".to_string(),
+            kbs_deployment_type: "MicroservicesDeployment".to_string(),
             kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
             kbs_secret_resources: vec![secret.to_string()],
             kbs_https_key_secret_name: HTTPS_KEY.to_string(),
