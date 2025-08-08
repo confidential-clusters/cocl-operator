@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
 use kube::runtime::{
@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use crds::ConfidentialCluster;
 mod trustee;
+mod reference_values;
 
 #[derive(Debug, Error)]
 enum Error {}
@@ -69,10 +70,10 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create the secret authentication key: {e}"),
     }
 
-    match trustee::generate_kbs_configuration(
+    match trustee::generate_kbs_configurations(
         client.clone(),
         &trustee_namespace,
-        &cocl.spec.trustee.kbs_configuration,
+        &cocl.spec.trustee,
     )
     .await
     {
@@ -116,8 +117,22 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create the resource policy configmap: {e}"),
     }
 
+    match trustee::generate_attestation_policy(
+        client.clone(),
+        &trustee_namespace,
+        &cocl.spec.trustee.attestation_policy,
+    )
+    .await
+    {
+        Ok(_) => info!(
+            "Generate configmap for the attestation policy: {}",
+            cocl.spec.trustee.attestation_policy
+        ),
+        Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
+    }
+
     // TODO: remove, right now only for testing
-    let secret = "test-secret".to_string();
+    let secret = "rootdecrypt".to_string();
     match trustee::generate_secret(client.clone(), &trustee_namespace, &secret).await {
         Ok(_) => info!("Generate test secret",),
         Err(e) => error!("Failed to create test secret: {e}"),

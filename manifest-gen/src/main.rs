@@ -4,7 +4,7 @@ use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee};
 use k8s_openapi::{
     api::{
         apps::v1::Deployment,
-        core::v1::{Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
+        core::v1::{Container, Namespace, PodSpec, PodTemplateSpec, Service, ServiceAccount},
         rbac::v1::{
             ClusterRole, ClusterRoleBinding, PolicyRule, Role, RoleBinding, RoleRef, Subject,
         },
@@ -263,6 +263,8 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
             trustee: Trustee {
                 namespace: args.trustee_namespace.clone(),
                 kbs_configuration: "kbs-config-map".to_string(),
+                as_configuration: "as-config-map".to_string(),
+                rvps_configuration: "rvps-config-map".to_string(),
                 attestation_policy: "attestation-policy-data".to_string(),
                 resource_policy: "resource-policy-data".to_string(),
                 reference_values: "reference-values-data".to_string(),
@@ -286,6 +288,39 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
     Ok(())
 }
 
+fn generate_forward_svc(output_dir: PathBuf, trustee_namespace: String) -> Result<()> {
+    let port = k8s_openapi::api::core::v1::ServicePort {
+        name: Some("http".to_string()),
+        node_port: Some(31000),
+        port: 8080,
+        ..Default::default()
+    };
+
+    let svc = Service {
+        metadata: ObjectMeta {
+            name: Some("kbs-forward".to_string()),
+            namespace: Some(trustee_namespace.clone()),
+            ..Default::default()
+        },
+        spec: Some(k8s_openapi::api::core::v1::ServiceSpec {
+            type_: Some("NodePort".to_string()),
+            ports: Some(vec![port]),
+            selector: Some(BTreeMap::from([("app".to_string(), "kbs".to_string())])),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let output_path = output_dir.join("forward_svc.yaml");
+    let yaml = serde_yaml::to_string(&svc)?;
+    let mut file = File::create(&output_path)?;
+    file.write_all(yaml.as_bytes())?;
+
+    info!("Generated service at {}", output_path.display());
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = Args::parse();
@@ -293,6 +328,7 @@ fn main() -> anyhow::Result<()> {
     generate_operator(&args)?;
     generate_crd(&args)?;
     generate_confidential_cluster_cr(&args)?;
+    generate_forward_svc(args.output_dir, args.trustee_namespace)?;
 
     Ok(())
 }
