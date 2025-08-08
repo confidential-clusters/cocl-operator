@@ -41,6 +41,7 @@ install:
 	$(KUBECTL) apply -f manifests/operator.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_crd.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_cr.yaml
+	$(KUBECTL) apply -f manifests/forward_svc.yaml
 
 clean:
 	cargo clean
