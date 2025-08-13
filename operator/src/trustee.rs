@@ -214,9 +214,7 @@ pub async fn generate_resource_policy(
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let policy_rego = r#"package policy
-default allow = true
-"#;
+    let policy_rego = include_str!("resource.rego");
     let mut data = BTreeMap::new();
     data.insert("policy.rego".to_string(), policy_rego.to_string());
 
