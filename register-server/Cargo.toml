@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "register-server"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+clap.workspace = true
+crds = { path = "../crds" }
+env_logger.workspace = true
+k8s-openapi.workspace = true
+kube.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid = { version = "1.0", features = ["v4"] }
+warp = "0.3"

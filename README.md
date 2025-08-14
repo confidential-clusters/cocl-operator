@@ -12,6 +12,7 @@ within the cluster.
 
 -   `/operator`: Contains the source code for the Kubernetes operator itself.
 -   `/crds`: Defines the `ConfidentialCluster` Custom Resource Definition (CRD) in Rust.
+-   `/register-server`: A server that provides Clevis PINs for key retrieval with random UUIDs.
 -   `/manifest-gen`: A tool for generating all the necessary Kubernetes manifests (Operator Deployment, CRD, RBAC rules, etc.).
 -   `/scripts`: Helper scripts for managing a local `kind` development cluster.
 -   `/manifests`: The default output directory for generated manifests. This directory is not checked into source control.

@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee};
+use crds::{ConfidentialCluster, ConfidentialClusterSpec, Machine, Trustee};
 use k8s_openapi::{
     api::{
         apps::v1::Deployment,
@@ -52,6 +52,13 @@ pub struct Args {
         default_value = "quay.io/confidential-clusters/compute-pcrs:latest"
     )]
     pcrs_compute_image: String,
+
+    /// Register server image to use in the deployment
+    #[arg(
+        long,
+        default_value = "quay.io/confidential-clusters/register-server:latest"
+    )]
+    register_server_image: String,
 }
 
 fn generate_operator(args: &Args) -> Result<()> {
@@ -172,6 +179,87 @@ fn generate_operator(args: &Args) -> Result<()> {
                 api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
                 resources: Some(vec![format!("{}/status", ConfidentialCluster::plural(&()))]),
                 verbs: vec!["patch".to_string(), "update".to_string()],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["apps".to_string()]),
+                resources: Some(vec!["deployments".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec!["services".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec!["serviceaccounts".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["rbac.authorization.k8s.io".to_string()]),
+                resources: Some(vec!["roles".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["rbac.authorization.k8s.io".to_string()]),
+                resources: Some(vec!["rolebindings".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["confidential-containers.io".to_string()]),
+                resources: Some(vec!["machines".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "delete".to_string(),
+                ],
                 ..Default::default()
             },
         ]),
@@ -333,16 +421,21 @@ fn generate_operator(args: &Args) -> Result<()> {
     Ok(())
 }
 
-pub fn generate_crd(args: &Args) -> Result<()> {
-    let crd = ConfidentialCluster::crd();
+pub fn generate_crds(args: &Args) -> Result<()> {
+    let confidential_cluster_crd = ConfidentialCluster::crd();
+    let machine_crd = Machine::crd();
 
     let output_path = args.output_dir.join("confidential_cluster_crd.yaml");
 
-    let yaml = serde_yaml::to_string(&crd)?;
-    let mut file = File::create(&output_path)?;
-    file.write_all(yaml.as_bytes())?;
+    let confidential_cluster_yaml = serde_yaml::to_string(&confidential_cluster_crd)?;
+    let machine_yaml = serde_yaml::to_string(&machine_crd)?;
 
-    info!("Generated CRD at {}", output_path.display());
+    let combined_yaml = format!("{confidential_cluster_yaml}\n---\n{machine_yaml}");
+
+    let mut file = File::create(&output_path)?;
+    file.write_all(combined_yaml.as_bytes())?;
+
+    info!("Generated CRDs at {}", output_path.display());
 
     Ok(())
 }
@@ -365,6 +458,7 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
                 kbs_config_name: "kbsconfig".to_string(),
             },
             pcrs_compute_image: args.pcrs_compute_image.clone(),
+            register_server_image: args.register_server_image.clone(),
         },
     };
 
@@ -387,7 +481,7 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     generate_operator(&args)?;
-    generate_crd(&args)?;
+    generate_crds(&args)?;
     generate_confidential_cluster_cr(&args)?;
 
     Ok(())
