@@ -11,23 +11,8 @@ insecure_key = true
 attestation_token_type = "CoCo"
 
 [attestation_service]
-type = "coco_as_builtin"
-work_dir = "/opt/confidential-containers/attestation-service"
-policy_engine = "opa"
-
-[attestation_service.attestation_token_broker]
-type = "Ear"
-policy_dir = "/opt/confidential-containers/attestation-service/policies"
-
-[attestation_service.attestation_token_config]
-duration_min = 5
-
-[attestation_service.rvps_config]
-type = "BuiltIn"
-
-[attestation_service.rvps_config.storage]
-type = "LocalJson"
-file_path = "/opt/confidential-containers/rvps/reference-values/reference-values.json"
+type = "coco_as_grpc"
+as_addr = "http://127.0.0.1:50004"
 
 [[plugins]]
 name = "resource"

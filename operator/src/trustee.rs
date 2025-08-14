@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
@@ -7,6 +8,8 @@ use log::info;
 use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
+
+use crate::reference_values::ReferenceValue;
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
@@ -79,34 +82,43 @@ pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> 
     Ok(())
 }
 
-pub async fn generate_kbs_configuration(
+pub async fn generate_kbs_configurations(
     client: Client,
     namespace: &str,
-    name: &str,
+    trustee: &Trustee,
 ) -> anyhow::Result<()> {
-    let kbs_config_toml = include_str!("kbs-config.toml");
-
-    let mut data = BTreeMap::new();
-    data.insert("kbs-config.toml".to_string(), kbs_config_toml.to_string());
-
-    let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(data),
-        ..Default::default()
-    };
-
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
-        .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
+
+    let kbs_config = include_str!("kbs-config.toml");
+    let as_config = include_str!("as-config.json");
+    let rvps_config = include_str!("rvps-config.json");
+
+    for (filename, content, configmap) in [
+        ("kbs-config.toml", kbs_config, &trustee.kbs_configuration),
+        ("as-config.json", as_config, &trustee.as_configuration),
+        ("rvps-config.json", rvps_config, &trustee.rvps_configuration),
+    ] {
+        let data = BTreeMap::from([(filename.to_string(), content.to_string())]);
+        let config_map = ConfigMap {
+            metadata: kube::api::ObjectMeta {
+                name: Some(configmap.to_string()),
+                namespace: Some(namespace.to_string()),
+                ..Default::default()
+            },
+            data: Some(data),
+            ..Default::default()
+        };
+
+        match config_maps
+            .create(&PostParams::default(), &config_map)
+            .await
+        {
+            Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
+            Err(Error::Api(ae)) if ae.code == 409 => {
+                info!("ConfigMap {} already exists", configmap)
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
     Ok(())
@@ -117,8 +129,28 @@ pub async fn generate_reference_values(
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let reference_values_json = r#"[
-    ]"#;
+    let reference_values_in_json = include_str!("reference-values-in.json");
+    let mut reference_values_in = match serde_json::from_str(reference_values_in_json)? {
+        serde_json::Value::Object(vals) => vals,
+        _ => return Err(anyhow!("Reference values had unexpected shape")),
+    };
+    reference_values_in.insert(
+        "svn".to_string(),
+        serde_json::Value::String("1".to_string()),
+    );
+    let reference_values = reference_values_in
+        .iter()
+        .map(|(name, value)| match value {
+            serde_json::Value::String(_) => Ok(ReferenceValue {
+                version: "0.1.0".to_string(),
+                name: format!("tpm_{name}"),
+                expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
+                value: serde_json::Value::Array(vec![value.clone()]),
+            }),
+            _ => Err(anyhow!("Reference values had unexpected data type")),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let reference_values_json = serde_json::to_string(&reference_values)?;
 
     let mut data = BTreeMap::new();
     data.insert(
@@ -152,7 +184,10 @@ pub async fn generate_reference_values(
 // TODO: this function needs to be removed, right now it is only for testing the resource
 pub async fn generate_secret(client: Client, namespace: &str, name: &str) -> anyhow::Result<()> {
     let mut data = BTreeMap::new();
-    data.insert("key".to_string(), k8s_openapi::ByteString(b"test".to_vec()));
+    data.insert(
+        "key1".to_string(),
+        k8s_openapi::ByteString(b"test".to_vec()),
+    );
 
     let secret = Secret {
         metadata: kube::api::ObjectMeta {
@@ -179,11 +214,41 @@ pub async fn generate_resource_policy(
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let policy_rego = r#"package policy
-default allow = true
-"#;
+    let policy_rego = include_str!("resource.rego");
     let mut data = BTreeMap::new();
     data.insert("policy.rego".to_string(), policy_rego.to_string());
+
+    let config_map = ConfigMap {
+        metadata: kube::api::ObjectMeta {
+            name: Some(name.to_string()),
+            namespace: Some(namespace.to_string()),
+            ..Default::default()
+        },
+        data: Some(data),
+        ..Default::default()
+    };
+
+    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
+    match config_maps
+        .create(&PostParams::default(), &config_map)
+        .await
+    {
+        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
+        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
+        Err(e) => return Err(e.into()),
+    }
+
+    Ok(())
+}
+
+pub async fn generate_attestation_policy(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> anyhow::Result<()> {
+    let policy_rego = include_str!("tpm.rego");
+    let mut data = BTreeMap::new();
+    data.insert("default_cpu.rego".to_string(), policy_rego.to_string());
 
     let config_map = ConfigMap {
         metadata: kube::api::ObjectMeta {
@@ -246,13 +311,16 @@ pub async fn generate_kbs(
         },
         spec: KbsConfigSpec {
             kbs_config_map_name: trustee.kbs_configuration.clone(),
+            kbs_as_config_map_name: trustee.as_configuration.clone(),
+            kbs_rvps_config_map_name: trustee.rvps_configuration.clone(),
             kbs_auth_secret_name: trustee.kbs_auth_key.clone(),
-            kbs_deployment_type: "AllInOneDeployment".to_string(),
+            kbs_deployment_type: "MicroservicesDeployment".to_string(),
             kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
             kbs_secret_resources: vec![secret.to_string()],
             kbs_https_key_secret_name: HTTPS_KEY.to_string(),
             kbs_https_cert_secret_name: HTTPS_CERT.to_string(),
             kbs_resource_policy_config_map_name: trustee.resource_policy.clone(),
+            kbs_attestation_policy_config_map_name: trustee.attestation_policy.clone(),
         },
     };
 
