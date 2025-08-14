@@ -52,3 +52,16 @@ pub struct KbsConfigSpec {
     pub kbs_resource_policy_config_map_name: String,
     pub kbs_attestation_policy_config_map_name: String,
 }
+
+#[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[kube(
+    group = "confidential-containers.io",
+    version = "v1alpha1",
+    kind = "Machine",
+    namespaced,
+    plural = "machines"
+)]
+pub struct MachineSpec {
+    pub id: String,
+    pub address: String,
+}
