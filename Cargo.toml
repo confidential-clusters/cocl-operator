@@ -1,3 +1,3 @@
 [workspace]
-members = ["crds", "operator", "manifest-gen"]
+members = ["crds", "operator", "manifest-gen", "register-server"]
 resolver = "3"

@@ -1,10 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee};
+use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee, Machine};
 use k8s_openapi::{
     api::{
         apps::v1::Deployment,
-        core::v1::{Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
+        core::v1::{Container, EnvVar, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
         rbac::v1::{
             ClusterRole, ClusterRoleBinding, PolicyRule, Role, RoleBinding, RoleRef, Subject,
         },
@@ -42,6 +42,14 @@ pub struct Args {
     /// Trustee namespace where to install trustee configuration
     #[arg(long, default_value = "operators")]
     trustee_namespace: String,
+
+    /// Register server image to use in the deployment
+    #[arg(
+        long,
+        default_value = "quay.io/confidential-clusters/register-server:latest"
+    )]
+    register_server_image: String,
+
 }
 
 fn generate_operator(args: &Args) -> Result<()> {
@@ -81,7 +89,18 @@ fn generate_operator(args: &Args) -> Result<()> {
                     containers: vec![Container {
                         name: name.to_string(),
                         image: Some(args.image.clone()),
-                        command: Some(vec!["/usr/bin/operator".to_string()]),
+                        command: Some(vec![
+                            "/usr/bin/operator".to_string(),
+                        ]),
+                        args: Some(vec![
+                            "--register-server-image".to_string(),
+                            "$(REGISTER_SERVER_IMAGE)".to_string(),
+                        ]),
+                        env: Some(vec![EnvVar {
+                            name: "REGISTER_SERVER_IMAGE".to_string(),
+                            value: Some(args.register_server_image.clone()),
+                            value_from: None,
+                        }]),
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -111,9 +130,10 @@ fn generate_operator(args: &Args) -> Result<()> {
         ..Default::default()
     };
 
-    let cluster_role = ClusterRole {
+    let operator_role = Role {
         metadata: ObjectMeta {
             name: Some(format!("{}-role", service_account_name)),
+            namespace: Some(namespace.clone()),
             ..Default::default()
         },
         rules: Some(vec![
@@ -136,18 +156,100 @@ fn generate_operator(args: &Args) -> Result<()> {
                 verbs: vec!["patch".to_string(), "update".to_string()],
                 ..Default::default()
             },
+            PolicyRule {
+                api_groups: Some(vec!["apps".to_string()]),
+                resources: Some(vec!["deployments".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec!["services".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec!["serviceaccounts".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["rbac.authorization.k8s.io".to_string()]),
+                resources: Some(vec!["roles".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["rbac.authorization.k8s.io".to_string()]),
+                resources: Some(vec!["rolebindings".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["confidential-containers.io".to_string()]),
+                resources: Some(vec!["machines".to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
         ]),
         ..Default::default()
     };
 
-    let cluster_role_binding = ClusterRoleBinding {
+    let operator_role_binding = RoleBinding {
         metadata: ObjectMeta {
             name: Some(format!("{}-rolebinding", service_account_name)),
+            namespace: Some(namespace.clone()),
             ..Default::default()
         },
         role_ref: RoleRef {
             api_group: "rbac.authorization.k8s.io".to_string(),
-            kind: "ClusterRole".to_string(),
+            kind: "Role".to_string(),
             name: format!("{}-role", service_account_name),
         },
         subjects: Some(vec![Subject {
@@ -213,8 +315,8 @@ fn generate_operator(args: &Args) -> Result<()> {
     };
 
     let sa_yaml = serde_yaml::to_string(&sa)?;
-    let cluster_role_yaml = serde_yaml::to_string(&cluster_role)?;
-    let cluster_role_binding_yaml = serde_yaml::to_string(&cluster_role_binding)?;
+    let operator_role_yaml = serde_yaml::to_string(&operator_role)?;
+    let operator_role_binding_yaml = serde_yaml::to_string(&operator_role_binding)?;
     let trustee_role_yaml = serde_yaml::to_string(&trustee_role)?;
     let trustee_role_binding_yaml = serde_yaml::to_string(&trustee_role_binding)?;
 
@@ -222,8 +324,8 @@ fn generate_operator(args: &Args) -> Result<()> {
         ns_yaml,
         operator_yaml,
         sa_yaml,
-        cluster_role_yaml,
-        cluster_role_binding_yaml,
+        operator_role_yaml,
+        operator_role_binding_yaml,
         trustee_role_yaml,
         trustee_role_binding_yaml,
     ]
@@ -238,16 +340,21 @@ fn generate_operator(args: &Args) -> Result<()> {
     Ok(())
 }
 
-pub fn generate_crd(args: &Args) -> Result<()> {
-    let crd = ConfidentialCluster::crd();
+pub fn generate_crds(args: &Args) -> Result<()> {
+    let confidential_cluster_crd = ConfidentialCluster::crd();
+    let machine_crd = Machine::crd();
 
     let output_path = args.output_dir.join("confidential_cluster_crd.yaml");
 
-    let yaml = serde_yaml::to_string(&crd)?;
-    let mut file = File::create(&output_path)?;
-    file.write_all(yaml.as_bytes())?;
+    let confidential_cluster_yaml = serde_yaml::to_string(&confidential_cluster_crd)?;
+    let machine_yaml = serde_yaml::to_string(&machine_crd)?;
 
-    info!("Generated CRD at {}", output_path.display());
+    let combined_yaml = format!("{}\n---\n{}", confidential_cluster_yaml, machine_yaml);
+
+    let mut file = File::create(&output_path)?;
+    file.write_all(combined_yaml.as_bytes())?;
+
+    info!("Generated CRDs at {}", output_path.display());
 
     Ok(())
 }
@@ -288,12 +395,13 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
     Ok(())
 }
 
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = Args::parse();
 
     generate_operator(&args)?;
-    generate_crd(&args)?;
+    generate_crds(&args)?;
     generate_confidential_cluster_cr(&args)?;
 
     Ok(())

@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, bail};
+use clap::Parser;
 use env_logger::Env;
 use futures_util::StreamExt;
 use kube::runtime::{
@@ -16,16 +17,25 @@ use thiserror::Error;
 use crds::ConfidentialCluster;
 mod trustee;
 mod reference_values;
+mod register_server;
 
 #[derive(Debug, Error)]
 enum Error {}
+
+#[derive(Parser)]
+#[command(name = "operator")]
+#[command(about = "Confidential clusters operator")]
+struct Args {
+    #[arg(long)]
+    register_server_image: String,
+}
 
 #[derive(Clone)]
 struct ContextData {
     client: Client,
 }
 
-async fn list_confidential_clusters(client: Client) -> anyhow::Result<ConfidentialCluster> {
+async fn list_confidential_clusters(client: Client, namespace: &str) -> anyhow::Result<ConfidentialCluster> {
     let namespace = client.default_namespace();
     info!("Listing ConfidentialClusters in namespace '{}'", namespace);
     let api: Api<ConfidentialCluster> = Api::namespaced(client.clone(), namespace);
@@ -52,8 +62,8 @@ fn error_policy(_obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<Contex
     Action::requeue(Duration::from_secs(60))
 }
 
-async fn install_trustee_configuration(client: Client) -> Result<()> {
-    let cocl = list_confidential_clusters(client.clone()).await?;
+async fn install_trustee_configuration(client: Client, namespace: String) -> Result<()> {
+    let cocl = list_confidential_clusters(client.clone(), &namespace).await?;
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
 
     match trustee::generate_kbs_auth_public_key(
@@ -156,18 +166,64 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
     Ok(())
 }
 
+async fn install_register_server(client: Client, register_server_image: String) -> Result<()> {
+    let namespace = client.default_namespace();
+
+    match register_server::create_register_server_rbac(
+        client.clone(),
+        &namespace,
+    )
+    .await
+    {
+        Ok(_) => info!("Register server RBAC created/updated successfully"),
+        Err(e) => error!("Failed to create register server RBAC: {e}"),
+    }
+
+    match register_server::create_register_server_deployment(
+        client.clone(),
+        &namespace,
+        &register_server_image,
+    )
+    .await
+    {
+        Ok(_) => info!("Register server deployment created/updated successfully"),
+        Err(e) => error!("Failed to create register server deployment: {e}"),
+    }
+
+    match register_server::create_register_server_service(
+        client.clone(),
+        &namespace,
+    )
+    .await
+    {
+        Ok(_) => info!("Register server service created/updated successfully"),
+        Err(e) => error!("Failed to create register server service: {e}"),
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
+    let args = Args::parse();
     let client = Client::try_default().await?;
+    let namespace = client.clone().default_namespace().to_string();
     let context = Arc::new(ContextData {
         client: client.clone(),
     });
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::all(client.clone());
+    let cl = Api::<ConfidentialCluster>::namespaced(client.clone(), &namespace);
 
-    tokio::spawn(install_trustee_configuration(client.clone()));
+    tokio::spawn(install_trustee_configuration(
+        client.clone(),
+        namespace,
+    ));
+    tokio::spawn(install_register_server(
+        client.clone(),
+        args.register_server_image,
+    ));
     Controller::new(cl, watcher::Config::default())
         .run::<_, ContextData>(reconcile, error_policy, context)
         .for_each(|res| async move {

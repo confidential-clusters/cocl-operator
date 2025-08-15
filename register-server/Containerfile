@@ -1,0 +1,6 @@
+FROM quay.io/fedora/fedora:42
+
+COPY ./target/debug/register-server /usr/local/bin/register-server
+
+EXPOSE 3030
+ENTRYPOINT ["/usr/local/bin/register-server"]
