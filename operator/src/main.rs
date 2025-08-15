@@ -35,7 +35,7 @@ struct ContextData {
     client: Client,
 }
 
-async fn list_confidential_clusters(client: Client) -> anyhow::Result<ConfidentialCluster> {
+async fn list_confidential_clusters(client: Client, namespace: &str) -> anyhow::Result<ConfidentialCluster> {
     let namespace = client.default_namespace();
     info!("Listing ConfidentialClusters in namespace '{}'", namespace);
     let api: Api<ConfidentialCluster> = Api::namespaced(client.clone(), namespace);
@@ -62,8 +62,8 @@ fn error_policy(_obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<Contex
     Action::requeue(Duration::from_secs(60))
 }
 
-async fn install_trustee_configuration(client: Client) -> Result<()> {
-    let cocl = list_confidential_clusters(client.clone()).await?;
+async fn install_trustee_configuration(client: Client, namespace: String) -> Result<()> {
+    let cocl = list_confidential_clusters(client.clone(), &namespace).await?;
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
 
     match trustee::generate_kbs_auth_public_key(
@@ -209,14 +209,16 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
     let client = Client::try_default().await?;
+    let namespace = client.clone().default_namespace().to_string();
     let context = Arc::new(ContextData {
         client: client.clone(),
     });
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::all(client.clone());
+    let cl = Api::<ConfidentialCluster>::namespaced(client.clone(), &namespace);
 
     tokio::spawn(install_trustee_configuration(
         client.clone(),
+        namespace,
     ));
     tokio::spawn(install_register_server(
         client.clone(),
