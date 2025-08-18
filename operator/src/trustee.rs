@@ -1,8 +1,9 @@
 use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
+use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
-use kube::api::PostParams;
+use kube::api::{Patch, PatchParams, PostParams};
 use kube::{Api, Client, Error};
 use log::info;
 use openssl::pkey::PKey;
@@ -181,17 +182,25 @@ pub async fn generate_reference_values(
     Ok(())
 }
 
-// TODO: this function needs to be removed, right now it is only for testing the resource
-pub async fn generate_secret(client: Client, namespace: &str, name: &str) -> anyhow::Result<()> {
-    let mut data = BTreeMap::new();
-    data.insert(
-        "key1".to_string(),
-        k8s_openapi::ByteString(b"test".to_vec()),
-    );
+fn generate_luks_key() -> anyhow::Result<[u8; 32]> {
+    let mut pass = [0; 32];
+    openssl::rand::rand_bytes(&mut pass)?;
+    Ok(pass)
+}
+
+pub async fn generate_secret(
+    client: Client,
+    namespace: &str,
+    kbs_config_name: &str,
+    id: &str,
+) -> anyhow::Result<()> {
+    let pass = generate_luks_key()?;
+    let secret_data = k8s_openapi::ByteString(pass.to_vec());
+    let data = BTreeMap::from([("root".to_string(), secret_data)]);
 
     let secret = Secret {
         metadata: kube::api::ObjectMeta {
-            name: Some(name.to_string()),
+            name: Some(id.to_string()),
             namespace: Some(namespace.to_string()),
             ..Default::default()
         },
@@ -199,12 +208,47 @@ pub async fn generate_secret(client: Client, namespace: &str, name: &str) -> any
         ..Default::default()
     };
 
-    let secrets: Api<Secret> = Api::namespaced(client, namespace);
+    let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
     match secrets.create(&PostParams::default(), &secret).await {
         Ok(s) => info!("Created Secret {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {} already exists", name),
+        Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {id} already exists"),
         Err(e) => return Err(e.into()),
     }
+
+    let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
+
+    let existing_secrets = kbs_configs
+        .get(kbs_config_name)
+        .await?
+        .spec
+        .kbs_secret_resources;
+    if existing_secrets.iter().any(|s| s == id) {
+        info!("Secret with ID {id} already present");
+        return Ok(())
+    }
+
+    let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;
+    let expected_secrets = existing_secrets
+        .iter()
+        .map(|s| serde_json::Value::String(s.clone()))
+        .collect();
+    let test_patch = PatchOperation::Test(TestOperation {
+        path: path.clone(),
+        value: serde_json::Value::Array(expected_secrets),
+    });
+
+    let value = serde_json::Value::String(id.to_string());
+    let add_patch = PatchOperation::Add(AddOperation {
+        path,
+        value: serde_json::Value::Array(vec![value]),
+    });
+
+    let json_patch = json_patch::Patch(vec![test_patch, add_patch]);
+    let patch: Patch<KbsConfig> = Patch::Json(json_patch);
+    let params = PatchParams::default();
+
+    kbs_configs.patch(kbs_config_name, &params, &patch).await?;
+    info!("Added secret {id} to {kbs_config_name}");
 
     Ok(())
 }
@@ -277,7 +321,6 @@ pub async fn generate_kbs(
     client: Client,
     namespace: &str,
     trustee: &Trustee,
-    secret: &str,
 ) -> anyhow::Result<()> {
     let labels = BTreeMap::from([
         (
@@ -316,7 +359,7 @@ pub async fn generate_kbs(
             kbs_auth_secret_name: trustee.kbs_auth_key.clone(),
             kbs_deployment_type: "MicroservicesDeployment".to_string(),
             kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
-            kbs_secret_resources: vec![secret.to_string()],
+            kbs_secret_resources: vec![],
             kbs_https_key_secret_name: HTTPS_KEY.to_string(),
             kbs_https_cert_secret_name: HTTPS_CERT.to_string(),
             kbs_resource_policy_config_map_name: trustee.resource_policy.clone(),
