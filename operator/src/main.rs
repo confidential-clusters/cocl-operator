@@ -14,8 +14,8 @@ use log::{error, info};
 use thiserror::Error;
 
 use crds::ConfidentialCluster;
-mod trustee;
 mod reference_values;
+mod trustee;
 
 #[derive(Debug, Error)]
 enum Error {}
@@ -131,26 +131,26 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    // TODO: remove, right now only for testing
-    let secret = "rootdecrypt".to_string();
-    match trustee::generate_secret(client.clone(), &trustee_namespace, &secret).await {
-        Ok(_) => info!("Generate test secret",),
-        Err(e) => error!("Failed to create test secret: {e}"),
-    }
-
-    match trustee::generate_kbs(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee,
-        &secret,
-    )
-    .await
-    {
+    match trustee::generate_kbs(client.clone(), &trustee_namespace, &cocl.spec.trustee).await {
         Ok(_) => info!(
             "Generate the KBS configuration: {}",
             cocl.spec.trustee.kbs_config_name
         ),
         Err(e) => error!("Failed to create the KBS configuration: {e}"),
+    }
+
+    // TODO replace this creation with a per-machine one.
+    // This secret's address is `default/machine/root`.
+    match trustee::generate_secret(
+        client.clone(),
+        &trustee_namespace,
+        &cocl.spec.trustee.kbs_config_name,
+        "machine",
+    )
+    .await
+    {
+        Ok(_) => info!("Generate test secret"),
+        Err(e) => error!("Failed to create test secret: {e}"),
     }
 
     Ok(())

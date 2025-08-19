@@ -1302,6 +1302,8 @@ dependencies = [
  "crds",
  "env_logger",
  "futures-util",
+ "json-patch",
+ "jsonptr",
  "k8s-openapi",
  "kube",
  "lo",
