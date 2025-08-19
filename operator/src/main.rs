@@ -14,6 +14,7 @@ use log::{error, info};
 use thiserror::Error;
 
 use crds::ConfidentialCluster;
+mod macros;
 mod reference_values;
 mod trustee;
 
