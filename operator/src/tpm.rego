@@ -10,9 +10,9 @@ hardware := 2 if {
 }
 
 tpm_pcrs_valid if {
-  input.tpm.pcrs[4] in data.reference.tpm_pcr4
-  input.tpm.pcrs[7] in data.reference.tpm_pcr7
-  input.tpm.pcrs[14] in data.reference.tpm_pcr14
+  lower(input.tpm.pcrs[4]) in data.reference.tpm_pcr4
+  lower(input.tpm.pcrs[7]) in data.reference.tpm_pcr7
+  lower(input.tpm.pcrs[14]) in data.reference.tpm_pcr14
 }
 
 executables := 3 if tpm_pcrs_valid

@@ -141,14 +141,21 @@ pub async fn generate_reference_values(
     );
     let reference_values = reference_values_in
         .iter()
-        .map(|(name, value)| match value {
-            serde_json::Value::String(_) => Ok(ReferenceValue {
-                version: "0.1.0".to_string(),
-                name: format!("tpm_{name}"),
-                expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
-                value: serde_json::Value::Array(vec![value.clone()]),
-            }),
-            _ => Err(anyhow!("Reference values had unexpected data type")),
+        .map(|(name, value)| {
+            if let serde_json::Value::String(hex) = value
+                && hex
+                    .chars()
+                    .all(|c| (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+            {
+                Ok(ReferenceValue {
+                    version: "0.1.0".to_string(),
+                    name: format!("tpm_{name}"),
+                    expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
+                    value: serde_json::Value::Array(vec![value.clone()]),
+                })
+            } else {
+                Err(anyhow!("Reference value '{value}' had unexpected shape"))
+            }
         })
         .collect::<Result<Vec<_>, _>>()?;
     let reference_values_json = serde_json::to_string(&reference_values)?;
@@ -217,7 +224,7 @@ pub async fn generate_secret(
         .kbs_secret_resources;
     if existing_secrets.iter().any(|s| s == id) {
         info!("Secret with ID {id} already present");
-        return Ok(())
+        return Ok(());
     }
 
     let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;
