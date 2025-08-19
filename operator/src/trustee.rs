@@ -15,6 +15,18 @@ use crate::reference_values::ReferenceValue;
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
 
+macro_rules! info_if_exists {
+    ($result:ident, $resource_type:literal, $resource_name:expr) => {
+        match $result {
+            Ok(_) => info!("Create {} {}", $resource_type, $resource_name),
+            Err(Error::Api(ae)) if ae.code == 409 => {
+                info!("{} {} already exists", $resource_type, $resource_name)
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+}
+
 pub async fn generate_kbs_auth_public_key(
     client: Client,
     namespace: &str,
@@ -47,11 +59,8 @@ pub async fn generate_kbs_auth_public_key(
     };
 
     let secrets: Api<Secret> = Api::namespaced(client, namespace);
-    match secrets.create(&PostParams::default(), &secret).await {
-        Ok(s) => info!("Create secret {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {} already exists", secret_name),
-        Err(e) => return Err(e.into()),
-    }
+    let create = secrets.create(&PostParams::default(), &secret).await;
+    info_if_exists!(create, "Secret", secret_name);
 
     Ok(())
 }
@@ -73,11 +82,8 @@ pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> 
             data: Some(map),
             ..Default::default()
         };
-        match secrets.create(&PostParams::default(), &secret).await {
-            Ok(s) => info!("Create secret {:?}", s.metadata.name),
-            Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {name} already exists"),
-            Err(e) => return Err(e.into()),
-        }
+        let create = secrets.create(&PostParams::default(), &secret).await;
+        info_if_exists!(create, "Secret", name);
     }
 
     Ok(())
@@ -110,16 +116,10 @@ pub async fn generate_kbs_configurations(
             ..Default::default()
         };
 
-        match config_maps
+        let create = config_maps
             .create(&PostParams::default(), &config_map)
-            .await
-        {
-            Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-            Err(Error::Api(ae)) if ae.code == 409 => {
-                info!("ConfigMap {} already exists", configmap)
-            }
-            Err(e) => return Err(e.into()),
-        }
+            .await;
+        info_if_exists!(create, "ConfigMap", configmap);
     }
 
     Ok(())
@@ -170,14 +170,10 @@ pub async fn generate_reference_values(
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
+    let create = config_maps
         .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
     Ok(())
 }
@@ -209,11 +205,8 @@ pub async fn generate_secret(
     };
 
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    match secrets.create(&PostParams::default(), &secret).await {
-        Ok(s) => info!("Created Secret {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {id} already exists"),
-        Err(e) => return Err(e.into()),
-    }
+    let create = secrets.create(&PostParams::default(), &secret).await;
+    info_if_exists!(create, "Secret", id);
 
     let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
 
@@ -273,14 +266,10 @@ pub async fn generate_resource_policy(
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
+    let create = config_maps
         .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
     Ok(())
 }
@@ -305,14 +294,10 @@ pub async fn generate_attestation_policy(
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
+    let create = config_maps
         .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
     Ok(())
 }
@@ -368,16 +353,10 @@ pub async fn generate_kbs(
     };
 
     let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
-    match kbs_configs
+    let create = kbs_configs
         .create(&PostParams::default(), &kbs_config)
-        .await
-    {
-        Ok(s) => info!("Created KbsConfig {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => {
-            info!("KbsConfig {} already exists", trustee.kbs_config_name)
-        }
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "KbsConfig", trustee.kbs_config_name);
 
     Ok(())
 }
