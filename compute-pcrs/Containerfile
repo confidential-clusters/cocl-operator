@@ -1,0 +1,13 @@
+FROM ghcr.io/confidential-clusters/compute-pcrs/buildroot AS builder
+WORKDIR /compute-pcrs
+COPY Cargo.toml Cargo.lock .
+COPY compute-pcrs compute-pcrs
+# Hack: Set compute-pcrs as sole member to avoid needing to copy other crates.
+# In that case, a rebuild would be triggered upon any change in those crates.
+RUN sed -i 's/members =.*/members = ["compute-pcrs"]/' Cargo.toml && \
+    git clone --depth 1 https://github.com/confidential-clusters/reference-values && \
+    cargo build --release -p compute-pcrs
+
+FROM quay.io/fedora/fedora:42
+COPY --from=builder /compute-pcrs/target/release/compute-pcrs /usr/local/bin
+COPY --from=builder /compute-pcrs/reference-values /reference-values

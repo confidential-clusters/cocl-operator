@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 )]
 pub struct ConfidentialClusterSpec {
     pub trustee: Trustee,
+    pub pcrs_compute_image: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

@@ -14,7 +14,6 @@ use log::{error, info};
 use thiserror::Error;
 
 use crds::ConfidentialCluster;
-mod reference_values;
 mod trustee;
 
 #[derive(Debug, Error)]
@@ -93,8 +92,10 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
 
     match trustee::generate_reference_values(
         client.clone(),
+        &namespace,
         &trustee_namespace,
         &cocl.spec.trustee.reference_values,
+        &cocl.spec.pcrs_compute_image,
     )
     .await
     {
