@@ -4,10 +4,9 @@ use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee};
 use k8s_openapi::{
     api::{
         apps::v1::Deployment,
-        core::v1::{Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
-        rbac::v1::{
-            PolicyRule, Role, RoleBinding, RoleRef, Subject,
-        },
+        batch::v1::Job,
+        core::v1::{ConfigMap, Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
+        rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject},
     },
     apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta},
 };
@@ -42,6 +41,12 @@ pub struct Args {
     /// Trustee namespace where to install trustee configuration
     #[arg(long, default_value = "operators")]
     trustee_namespace: String,
+
+    #[arg(
+        long,
+        default_value = "quay.io/confidential-clusters/compute-pcrs:latest"
+    )]
+    pcrs_compute_image: String,
 }
 
 fn generate_operator(args: &Args) -> Result<()> {
@@ -99,12 +104,12 @@ fn generate_operator(args: &Args) -> Result<()> {
     let output_path = args.output_dir.join("operator.yaml");
 
     // RBAC
-    let service_account_name = "cocl-operator";
+    let operator_service_account_name = "cocl-operator";
     let namespace = args.namespace.to_string();
 
-    let sa = ServiceAccount {
+    let operator_service_account = ServiceAccount {
         metadata: ObjectMeta {
-            name: Some(service_account_name.to_string()),
+            name: Some(operator_service_account_name.to_string()),
             namespace: Some(namespace.clone()),
             ..Default::default()
         },
@@ -113,11 +118,25 @@ fn generate_operator(args: &Args) -> Result<()> {
 
     let operator_role = Role {
         metadata: ObjectMeta {
-            name: Some(format!("{service_account_name}-role")),
+            name: Some(format!("{operator_service_account_name}-role")),
             namespace: Some(namespace.clone()),
             ..Default::default()
         },
         rules: Some(vec![
+            PolicyRule {
+                api_groups: Some(vec!["batch".to_string()]),
+                resources: Some(vec![Job::plural(&()).to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                    "delete".to_string(),
+                ],
+                ..Default::default()
+            },
             PolicyRule {
                 api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
                 resources: Some(vec![ConfidentialCluster::plural(&()).to_string()]),
@@ -138,23 +157,73 @@ fn generate_operator(args: &Args) -> Result<()> {
                 ..Default::default()
             },
         ]),
-        ..Default::default()
     };
 
     let operator_role_binding = RoleBinding {
         metadata: ObjectMeta {
-            name: Some(format!("{service_account_name}-rolebinding")),
+            name: Some(format!("{operator_service_account_name}-rolebinding")),
             namespace: Some(namespace.clone()),
             ..Default::default()
         },
         role_ref: RoleRef {
             api_group: "rbac.authorization.k8s.io".to_string(),
             kind: "Role".to_string(),
-            name: format!("{service_account_name}-role"),
+            name: format!("{operator_service_account_name}-role"),
         },
         subjects: Some(vec![Subject {
             kind: "ServiceAccount".to_string(),
-            name: service_account_name.to_string(),
+            name: operator_service_account_name.to_string(),
+            namespace: Some(namespace.clone()),
+            ..Default::default()
+        }]),
+    };
+
+    let compute_pcrs_service_account_name = "compute-pcrs";
+
+    let compute_pcrs_service_account = ServiceAccount {
+        metadata: ObjectMeta {
+            name: Some(compute_pcrs_service_account_name.to_string()),
+            namespace: Some(namespace.clone()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let compute_pcrs_role = Role {
+        metadata: ObjectMeta {
+            name: Some(format!("{compute_pcrs_service_account_name}-role")),
+            namespace: Some(args.trustee_namespace.clone()),
+            ..Default::default()
+        },
+        rules: Some(vec![PolicyRule {
+            api_groups: Some(vec!["".to_string()]),
+            resources: Some(vec![ConfigMap::plural(&()).to_string()]),
+            verbs: vec![
+                "create".to_string(),
+                "get".to_string(),
+                "list".to_string(),
+                "watch".to_string(),
+                "patch".to_string(),
+                "update".to_string(),
+            ],
+            ..Default::default()
+        }]),
+    };
+
+    let compute_pcrs_role_binding = RoleBinding {
+        metadata: ObjectMeta {
+            name: Some(format!("{compute_pcrs_service_account_name}-rolebinding")),
+            namespace: Some(args.trustee_namespace.clone()),
+            ..Default::default()
+        },
+        role_ref: RoleRef {
+            api_group: "rbac.authorization.k8s.io".to_string(),
+            kind: "Role".to_string(),
+            name: format!("{compute_pcrs_service_account_name}-role"),
+        },
+        subjects: Some(vec![Subject {
+            kind: "ServiceAccount".to_string(),
+            name: compute_pcrs_service_account_name.to_string(),
             namespace: Some(namespace.clone()),
             ..Default::default()
         }]),
@@ -208,24 +277,30 @@ fn generate_operator(args: &Args) -> Result<()> {
         },
         subjects: Some(vec![Subject {
             kind: "ServiceAccount".to_string(),
-            name: service_account_name.to_string(),
+            name: operator_service_account_name.to_string(),
             namespace: Some(namespace),
             ..Default::default()
         }]),
     };
 
-    let sa_yaml = serde_yaml::to_string(&sa)?;
+    let operator_service_account_yaml = serde_yaml::to_string(&operator_service_account)?;
     let operator_role_yaml = serde_yaml::to_string(&operator_role)?;
     let operator_role_binding_yaml = serde_yaml::to_string(&operator_role_binding)?;
+    let compute_pcrs_service_account_yaml = serde_yaml::to_string(&compute_pcrs_service_account)?;
+    let compute_pcrs_role_yaml = serde_yaml::to_string(&compute_pcrs_role)?;
+    let compute_pcrs_role_binding_yaml = serde_yaml::to_string(&compute_pcrs_role_binding)?;
     let trustee_role_yaml = serde_yaml::to_string(&trustee_role)?;
     let trustee_role_binding_yaml = serde_yaml::to_string(&trustee_role_binding)?;
 
     let combined_yaml = [
         ns_yaml,
         operator_yaml,
-        sa_yaml,
+        operator_service_account_yaml,
         operator_role_yaml,
         operator_role_binding_yaml,
+        compute_pcrs_service_account_yaml,
+        compute_pcrs_role_yaml,
+        compute_pcrs_role_binding_yaml,
         trustee_role_yaml,
         trustee_role_binding_yaml,
     ]
@@ -273,6 +348,7 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
                 kbs_auth_key: "kbs-auth-key".to_string(),
                 kbs_config_name: "kbsconfig".to_string(),
             },
+            pcrs_compute_image: args.pcrs_compute_image.clone(),
         },
     };
 

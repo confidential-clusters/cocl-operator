@@ -6,7 +6,6 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 base64 = "0.22.1"
-chrono = "0.4.41"
 crds = { path = "../crds" }
 env_logger = { workspace = true }
 futures-util = "0.3.31"
@@ -17,6 +16,6 @@ kube = { workspace = true, features = ["runtime"] }
 log.workspace = true
 openssl = "0.10.73"
 thiserror = "2.0.12"
-tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

@@ -27,29 +27,6 @@ within the cluster.
 
 ### Quick Start
 
-Fill the file `operator/src/reference-values-in.json` with the desired PCR values, e.g. by
-
-```bash
-$ for i in {4,7,14}; do
-    sudo tpm2_pcrread sha256:${i} | awk -F: '/0x/ {sub(/.*0x/, "", $2); gsub(/[^0-9A-Fa-f]/, "", $2); print tolower($2)}'
-done
-6401162a80170f039aabff2606d2c7b4843c592edcdc082abd66f644131d83c8
-b3a56a06c03a65277d0a787fcabc1e293eaa5d6dd79398f2dda741f7b874c65d
-17cdefd9548f4383b67a37a901673bf3c8ded6f619d36c8007562de1d93c81cc
-```
-
-i.e.
-
-```json
-{
-    "pcr4":  "6401162a80170f039aabff2606d2c7b4843c592edcdc082abd66f644131d83c8",
-    "pcr7":  "b3a56a06c03a65277d0a787fcabc1e293eaa5d6dd79398f2dda741f7b874c65d",
-    "pcr14": "17cdefd9548f4383b67a37a901673bf3c8ded6f619d36c8007562de1d93c81cc"
-}
-```
-
-> Hint: You can stop tracking changes to this file with `git update-index --skip-worktree operator/src/reference-values-in.json`.
-
 Create the cluster, install [trustee operator](https://github.com/confidential-containers/trustee-operator) and deploy 
 the operator.
 
