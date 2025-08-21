@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
@@ -10,8 +9,8 @@ use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
 
-use crate::reference_values::ReferenceValue;
 use crate::macros::info_if_exists;
+use crate::reference_values::{ComputedPcrs, ReferenceValue};
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
@@ -118,28 +117,23 @@ pub async fn generate_reference_values(
     client: Client,
     namespace: &str,
     name: &str,
+    pcrs: ComputedPcrs,
 ) -> anyhow::Result<()> {
-    let reference_values_in_json = include_str!("reference-values-in.json");
-    let mut reference_values_in = match serde_json::from_str(reference_values_in_json)? {
-        serde_json::Value::Object(vals) => vals,
-        _ => return Err(anyhow!("Reference values had unexpected shape")),
-    };
-    reference_values_in.insert(
-        "svn".to_string(),
-        serde_json::Value::String("1".to_string()),
-    );
-    let reference_values = reference_values_in
+    let mut reference_values_in: BTreeMap<_, _> = pcrs
         .iter()
-        .map(|(name, value)| match value {
-            serde_json::Value::String(_) => Ok(ReferenceValue {
-                version: "0.1.0".to_string(),
-                name: format!("tpm_{name}"),
-                expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
-                value: serde_json::Value::Array(vec![value.clone()]),
-            }),
-            _ => Err(anyhow!("Reference values had unexpected data type")),
+        .map(|(slot, value)| (format!("pcr{slot}"), value))
+        .collect();
+    let svn = "1".to_string();
+    reference_values_in.insert("svn".to_string(), &svn);
+    let reference_values: Vec<_> = reference_values_in
+        .iter()
+        .map(|(name, value)| ReferenceValue {
+            version: "0.1.0".to_string(),
+            name: format!("tpm_{name}"),
+            expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
+            value: serde_json::Value::Array(vec![serde_json::Value::String(value.to_string())]),
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect();
     let reference_values_json = serde_json::to_string(&reference_values)?;
 
     let mut data = BTreeMap::new();
@@ -206,7 +200,7 @@ pub async fn generate_secret(
         .kbs_secret_resources;
     if existing_secrets.iter().any(|s| s == id) {
         info!("Secret with ID {id} already present");
-        return Ok(())
+        return Ok(());
     }
 
     let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;

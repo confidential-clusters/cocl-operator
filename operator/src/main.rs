@@ -92,10 +92,23 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
         Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
+    let pcrs;
+    match reference_values::compute_pcrs(client.clone(), &namespace).await {
+        Ok(ps) => {
+            info!("Computed expected PCRs");
+            pcrs = ps;
+        }
+        Err(e) => {
+            error!("Failed to compute expected PCRs: {e}");
+            return Err(e);
+        }
+    }
+
     match trustee::generate_reference_values(
         client.clone(),
         &trustee_namespace,
         &cocl.spec.trustee.reference_values,
+        pcrs,
     )
     .await
     {

@@ -4,7 +4,8 @@ use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee};
 use k8s_openapi::{
     api::{
         apps::v1::Deployment,
-        core::v1::{Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
+        batch::v1::Job,
+        core::v1::{Container, Namespace, Pod, PodSpec, PodTemplateSpec, ServiceAccount},
         rbac::v1::{
             ClusterRole, ClusterRoleBinding, PolicyRule, Role, RoleBinding, RoleRef, Subject,
         },
@@ -117,6 +118,45 @@ fn generate_operator(args: &Args) -> Result<()> {
             ..Default::default()
         },
         rules: Some(vec![
+            PolicyRule {
+                api_groups: Some(vec!["batch".to_string()]),
+                resources: Some(vec![Job::plural(&()).to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec![Pod::plural(&()).to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec![format!("{}/log", Pod::plural(&()))]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                ],
+                ..Default::default()
+            },
             PolicyRule {
                 api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
                 resources: Some(vec![ConfidentialCluster::plural(&()).to_string()]),
