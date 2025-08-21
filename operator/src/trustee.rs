@@ -1,16 +1,16 @@
-use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::{Patch, PatchParams, PostParams};
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
 
-use crate::reference_values::ReferenceValue;
+use crate::macros::info_if_exists;
+use crate::reference_values::{ComputedPcrs, ReferenceValue};
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
@@ -47,11 +47,8 @@ pub async fn generate_kbs_auth_public_key(
     };
 
     let secrets: Api<Secret> = Api::namespaced(client, namespace);
-    match secrets.create(&PostParams::default(), &secret).await {
-        Ok(s) => info!("Create secret {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {} already exists", secret_name),
-        Err(e) => return Err(e.into()),
-    }
+    let create = secrets.create(&PostParams::default(), &secret).await;
+    info_if_exists!(create, "Secret", secret_name);
 
     Ok(())
 }
@@ -73,11 +70,8 @@ pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> 
             data: Some(map),
             ..Default::default()
         };
-        match secrets.create(&PostParams::default(), &secret).await {
-            Ok(s) => info!("Create secret {:?}", s.metadata.name),
-            Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {name} already exists"),
-            Err(e) => return Err(e.into()),
-        }
+        let create = secrets.create(&PostParams::default(), &secret).await;
+        info_if_exists!(create, "Secret", name);
     }
 
     Ok(())
@@ -110,16 +104,10 @@ pub async fn generate_kbs_configurations(
             ..Default::default()
         };
 
-        match config_maps
+        let create = config_maps
             .create(&PostParams::default(), &config_map)
-            .await
-        {
-            Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-            Err(Error::Api(ae)) if ae.code == 409 => {
-                info!("ConfigMap {} already exists", configmap)
-            }
-            Err(e) => return Err(e.into()),
-        }
+            .await;
+        info_if_exists!(create, "ConfigMap", configmap);
     }
 
     Ok(())
@@ -129,28 +117,23 @@ pub async fn generate_reference_values(
     client: Client,
     namespace: &str,
     name: &str,
+    pcrs: ComputedPcrs,
 ) -> anyhow::Result<()> {
-    let reference_values_in_json = include_str!("reference-values-in.json");
-    let mut reference_values_in = match serde_json::from_str(reference_values_in_json)? {
-        serde_json::Value::Object(vals) => vals,
-        _ => return Err(anyhow!("Reference values had unexpected shape")),
-    };
-    reference_values_in.insert(
-        "svn".to_string(),
-        serde_json::Value::String("1".to_string()),
-    );
-    let reference_values = reference_values_in
+    let mut reference_values_in: BTreeMap<_, _> = pcrs
         .iter()
-        .map(|(name, value)| match value {
-            serde_json::Value::String(_) => Ok(ReferenceValue {
-                version: "0.1.0".to_string(),
-                name: format!("tpm_{name}"),
-                expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
-                value: serde_json::Value::Array(vec![value.clone()]),
-            }),
-            _ => Err(anyhow!("Reference values had unexpected data type")),
+        .map(|(slot, value)| (format!("pcr{slot}"), value))
+        .collect();
+    let svn = "1".to_string();
+    reference_values_in.insert("svn".to_string(), &svn);
+    let reference_values: Vec<_> = reference_values_in
+        .iter()
+        .map(|(name, value)| ReferenceValue {
+            version: "0.1.0".to_string(),
+            name: format!("tpm_{name}"),
+            expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
+            value: serde_json::Value::Array(vec![serde_json::Value::String(value.to_string())]),
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect();
     let reference_values_json = serde_json::to_string(&reference_values)?;
 
     let mut data = BTreeMap::new();
@@ -170,14 +153,10 @@ pub async fn generate_reference_values(
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
+    let create = config_maps
         .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
     Ok(())
 }
@@ -209,11 +188,8 @@ pub async fn generate_secret(
     };
 
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    match secrets.create(&PostParams::default(), &secret).await {
-        Ok(s) => info!("Created Secret {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("Secret {id} already exists"),
-        Err(e) => return Err(e.into()),
-    }
+    let create = secrets.create(&PostParams::default(), &secret).await;
+    info_if_exists!(create, "Secret", id);
 
     let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
 
@@ -224,7 +200,7 @@ pub async fn generate_secret(
         .kbs_secret_resources;
     if existing_secrets.iter().any(|s| s == id) {
         info!("Secret with ID {id} already present");
-        return Ok(())
+        return Ok(());
     }
 
     let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;
@@ -273,14 +249,10 @@ pub async fn generate_resource_policy(
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
+    let create = config_maps
         .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
     Ok(())
 }
@@ -305,14 +277,10 @@ pub async fn generate_attestation_policy(
     };
 
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    match config_maps
+    let create = config_maps
         .create(&PostParams::default(), &config_map)
-        .await
-    {
-        Ok(s) => info!("Created ConfigMap {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => info!("ConfigMap {} already exists", name),
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
     Ok(())
 }
@@ -368,16 +336,10 @@ pub async fn generate_kbs(
     };
 
     let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
-    match kbs_configs
+    let create = kbs_configs
         .create(&PostParams::default(), &kbs_config)
-        .await
-    {
-        Ok(s) => info!("Created KbsConfig {:?}", s.metadata.name),
-        Err(Error::Api(ae)) if ae.code == 409 => {
-            info!("KbsConfig {} already exists", trustee.kbs_config_name)
-        }
-        Err(e) => return Err(e.into()),
-    }
+        .await;
+    info_if_exists!(create, "KbsConfig", trustee.kbs_config_name);
 
     Ok(())
 }
