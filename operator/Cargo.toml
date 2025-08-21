@@ -6,17 +6,20 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 base64 = "0.22.1"
-chrono = "0.4.41"
+chrono.workspace = true
+compute-pcrs-lib.workspace = true
 crds = { path = "../crds" }
-env_logger = { workspace = true }
+env_logger.workspace = true
 futures-util = "0.3.31"
 json-patch = "4.0.0"
 jsonptr = "0.7.1"
 k8s-openapi.workspace = true
 kube = { workspace = true, features = ["runtime"] }
 log.workspace = true
+oci-spec = "0.8.2"
+oci-client = "0.15.0"
 openssl = "0.10.73"
 thiserror = "2.0.12"
-tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

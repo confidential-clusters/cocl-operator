@@ -26,6 +26,8 @@ struct ContextData {
     client: Client,
 }
 
+const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
+
 async fn list_confidential_clusters(
     client: Client,
     namespace: &str,
@@ -92,7 +94,11 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
         Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
-    match trustee::generate_reference_values(
+    match reference_values::create_pcrs_config_map(client.clone(), &namespace).await {
+        Ok(_) => info!("Created bare configmap for PCRs"),
+        Err(e) => info!("Failed to create the PCRs configmap: {e}"),
+    }
+    match trustee::create_reference_value_config_map(
         client.clone(),
         &trustee_namespace,
         &cocl.spec.trustee.reference_values,
@@ -100,10 +106,38 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
     .await
     {
         Ok(_) => info!(
-            "Generate configmap for the reference values: {}",
+            "Created bare configmap for the reference values: {}",
             cocl.spec.trustee.reference_values
         ),
         Err(e) => error!("Failed to create the reference values configmap: {e}"),
+    }
+    // TODO CVO input
+    match reference_values::handle_new_image(
+        client.clone(),
+        &namespace,
+        BOOT_IMAGE,
+        &cocl.spec.pcrs_compute_image,
+    )
+    .await
+    {
+        Ok(_) => info!("Computed or retrieved reference values for image: {BOOT_IMAGE}",),
+        Err(e) => {
+            error!("Failed to compute or retrieve reference values for image {BOOT_IMAGE}: {e}",)
+        }
+    }
+    match trustee::recompute_reference_values(
+        client.clone(),
+        &namespace,
+        &trustee_namespace,
+        &cocl.spec.trustee.reference_values,
+    )
+    .await
+    {
+        Ok(_) => info!(
+            "Recomputed reference values to configmap: {}",
+            cocl.spec.trustee.reference_values
+        ),
+        Err(e) => error!("Failed to recompute reference values: {e}"),
     }
 
     match trustee::generate_resource_policy(

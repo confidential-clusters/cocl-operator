@@ -1,20 +1,41 @@
-use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
-use crds::{KbsConfig, KbsConfigSpec, Trustee};
+use chrono::{DateTime, TimeDelta, Utc};
+use crds::{KbsConfig, KbsConfigSpec, PCR_CONFIG_MAP, Trustee};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
-use kube::api::{Patch, PatchParams, PostParams};
+use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
 use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
-use std::collections::BTreeMap;
-use std::fs;
+use serde::{Serialize, Serializer};
+use std::{collections::BTreeMap, fs};
 
-use crate::reference_values::ReferenceValue;
 use crate::macros::info_if_exists;
+use crate::reference_values::get_image_pcrs;
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
+const REFERENCE_VALUES_FILE: &str = "reference-values.json";
+
+fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str(&d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
+/// Sync with Trustee
+/// reference_value_provider_service::reference_value::ReferenceValue
+/// (cannot import directly because its expiration doesn't serialize
+/// right)
+#[derive(Serialize)]
+struct ReferenceValue {
+    pub version: String,
+    pub name: String,
+    #[serde(serialize_with = "primitive_date_time_to_str")]
+    pub expiration: DateTime<Utc>,
+    pub value: serde_json::Value,
+}
 
 pub async fn generate_kbs_auth_public_key(
     client: Client,
@@ -114,58 +135,66 @@ pub async fn generate_kbs_configurations(
     Ok(())
 }
 
-pub async fn generate_reference_values(
+pub async fn recompute_reference_values(
+    client: Client,
+    operator_namespace: &str,
+    trustee_namespace: &str,
+    name: &str,
+) -> anyhow::Result<()> {
+    let operator_config_maps: Api<ConfigMap> = Api::namespaced(client.clone(), operator_namespace);
+    let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
+    let image_pcrs = get_image_pcrs(image_pcrs_map)?;
+    // TODO many grub+shim:many OS image recompute once supported
+    let mut reference_values_in = BTreeMap::from([(
+        "svn".to_string(),
+        vec![serde_json::Value::String("1".to_string())],
+    )]);
+    for pcr in image_pcrs.pcrs.values().flat_map(|v| &v.pcrs) {
+        reference_values_in
+            .entry(format!("pcr{}", pcr.id))
+            .or_default()
+            .push(serde_json::Value::String(pcr.value.clone()));
+    }
+    let reference_values: Vec<_> = reference_values_in
+        .iter()
+        .map(|(name, values)| ReferenceValue {
+            version: "0.1.0".to_string(),
+            name: format!("tpm_{name}"),
+            expiration: Utc::now() + TimeDelta::days(365),
+            value: serde_json::Value::Array(values.to_vec()),
+        })
+        .collect();
+    let reference_values_json = serde_json::to_string(&reference_values)?;
+    let data = BTreeMap::from([(
+        REFERENCE_VALUES_FILE.to_string(),
+        reference_values_json.to_string(),
+    )]);
+
+    let trustee_config_maps: Api<ConfigMap> = Api::namespaced(client, trustee_namespace);
+    let mut rvs = trustee_config_maps.get(name).await?;
+    rvs.data = Some(data);
+    trustee_config_maps
+        .replace(name, &PostParams::default(), &rvs)
+        .await?;
+    Ok(())
+}
+
+pub async fn create_reference_value_config_map(
     client: Client,
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let reference_values_in_json = include_str!("reference-values-in.json");
-    let mut reference_values_in = match serde_json::from_str(reference_values_in_json)? {
-        serde_json::Value::Object(vals) => vals,
-        _ => return Err(anyhow!("Reference values had unexpected shape")),
-    };
-    reference_values_in.insert(
-        "svn".to_string(),
-        serde_json::Value::String("1".to_string()),
-    );
-    let reference_values = reference_values_in
-        .iter()
-        .map(|(name, value)| {
-            if let serde_json::Value::String(hex) = value
-                && hex
-                    .chars()
-                    .all(|c| (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
-            {
-                Ok(ReferenceValue {
-                    version: "0.1.0".to_string(),
-                    name: format!("tpm_{name}"),
-                    expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
-                    value: serde_json::Value::Array(vec![value.clone()]),
-                })
-            } else {
-                Err(anyhow!("Reference value '{value}' had unexpected shape"))
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let reference_values_json = serde_json::to_string(&reference_values)?;
-
-    let mut data = BTreeMap::new();
-    data.insert(
-        "reference-values.json".to_string(),
-        reference_values_json.to_string(),
-    );
-
+    let empty_data = BTreeMap::from([(REFERENCE_VALUES_FILE.to_string(), "{}".to_string())]);
+    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
     let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
+        metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(namespace.to_string()),
             ..Default::default()
         },
-        data: Some(data),
+        data: Some(empty_data),
         ..Default::default()
     };
-
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
     let create = config_maps
         .create(&PostParams::default(), &config_map)
         .await;
