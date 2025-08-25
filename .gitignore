@@ -1,4 +1,3 @@
 .kubeconfig
 /target
 /manifests
-/operator/src/reference-values-in.json

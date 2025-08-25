@@ -48,6 +48,8 @@ i.e.
 }
 ```
 
+> Hint: You can stop tracking changes to this file with `git update-index --skip-worktree operator/src/reference-values-in.json`.
+
 Create the cluster, install [trustee operator](https://github.com/confidential-containers/trustee-operator) and deploy 
 the operator.
 

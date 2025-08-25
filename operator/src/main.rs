@@ -27,7 +27,7 @@ struct ContextData {
 
 async fn list_confidential_clusters(client: Client) -> anyhow::Result<ConfidentialCluster> {
     let namespace = client.default_namespace();
-    info!("Listing ConfidentialClusters in namespace '{}'", namespace);
+    info!("Listing ConfidentialClusters in namespace '{namespace}'");
     let api: Api<ConfidentialCluster> = Api::namespaced(client.clone(), namespace);
     let lp = ListParams::default();
     let list = api.list(&lp).await?;
@@ -39,7 +39,7 @@ async fn list_confidential_clusters(client: Client) -> anyhow::Result<Confidenti
                 "Found ConfidentialCluster: {}",
                 item.metadata.name.as_deref().unwrap_or("<no name>"),
             );
-            return Ok(item.clone());
+            Ok(item.clone())
         }
         _ => bail!("too many confidential cluster resources defined in the namespace"),
     }
@@ -172,8 +172,8 @@ async fn main() -> Result<()> {
         .run::<_, ContextData>(reconcile, error_policy, context)
         .for_each(|res| async move {
             match res {
-                Ok(o) => info!("reconciled {:?}", o),
-                Err(e) => info!("reconcile failed: {:?}", e),
+                Ok(o) => info!("reconciled {o:?}"),
+                Err(e) => info!("reconcile failed: {e:?}"),
             }
         })
         .await;
