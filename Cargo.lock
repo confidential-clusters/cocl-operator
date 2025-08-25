@@ -1150,12 +1150,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
 
 [[package]]
-name = "lo"
-version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35a010e03e6517e33f55f5fb5a49bf1cd367d54053648ea6fbf6f15aa68e0c62"
-
-[[package]]
 name = "lock_api"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1298,7 +1292,6 @@ dependencies = [
  "anyhow",
  "base64",
  "chrono",
- "clap",
  "crds",
  "env_logger",
  "futures-util",
@@ -1306,7 +1299,6 @@ dependencies = [
  "jsonptr",
  "k8s-openapi",
  "kube",
- "lo",
  "log",
  "openssl",
  "serde",
