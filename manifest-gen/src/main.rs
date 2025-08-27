@@ -6,7 +6,7 @@ use k8s_openapi::{
         apps::v1::Deployment,
         core::v1::{Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
         rbac::v1::{
-            ClusterRole, ClusterRoleBinding, PolicyRule, Role, RoleBinding, RoleRef, Subject,
+            PolicyRule, Role, RoleBinding, RoleRef, Subject,
         },
     },
     apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta},
@@ -111,9 +111,10 @@ fn generate_operator(args: &Args) -> Result<()> {
         ..Default::default()
     };
 
-    let cluster_role = ClusterRole {
+    let operator_role = Role {
         metadata: ObjectMeta {
             name: Some(format!("{service_account_name}-role")),
+            namespace: Some(namespace.clone()),
             ..Default::default()
         },
         rules: Some(vec![
@@ -140,14 +141,15 @@ fn generate_operator(args: &Args) -> Result<()> {
         ..Default::default()
     };
 
-    let cluster_role_binding = ClusterRoleBinding {
+    let operator_role_binding = RoleBinding {
         metadata: ObjectMeta {
             name: Some(format!("{service_account_name}-rolebinding")),
+            namespace: Some(namespace.clone()),
             ..Default::default()
         },
         role_ref: RoleRef {
             api_group: "rbac.authorization.k8s.io".to_string(),
-            kind: "ClusterRole".to_string(),
+            kind: "Role".to_string(),
             name: format!("{service_account_name}-role"),
         },
         subjects: Some(vec![Subject {
@@ -213,8 +215,8 @@ fn generate_operator(args: &Args) -> Result<()> {
     };
 
     let sa_yaml = serde_yaml::to_string(&sa)?;
-    let cluster_role_yaml = serde_yaml::to_string(&cluster_role)?;
-    let cluster_role_binding_yaml = serde_yaml::to_string(&cluster_role_binding)?;
+    let operator_role_yaml = serde_yaml::to_string(&operator_role)?;
+    let operator_role_binding_yaml = serde_yaml::to_string(&operator_role_binding)?;
     let trustee_role_yaml = serde_yaml::to_string(&trustee_role)?;
     let trustee_role_binding_yaml = serde_yaml::to_string(&trustee_role_binding)?;
 
@@ -222,8 +224,8 @@ fn generate_operator(args: &Args) -> Result<()> {
         ns_yaml,
         operator_yaml,
         sa_yaml,
-        cluster_role_yaml,
-        cluster_role_binding_yaml,
+        operator_role_yaml,
+        operator_role_binding_yaml,
         trustee_role_yaml,
         trustee_role_binding_yaml,
     ]
