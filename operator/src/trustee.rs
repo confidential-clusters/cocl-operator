@@ -4,28 +4,17 @@ use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::{Patch, PatchParams, PostParams};
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
 use std::collections::BTreeMap;
 use std::fs;
 
 use crate::reference_values::ReferenceValue;
+use crate::macros::info_if_exists;
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
-
-macro_rules! info_if_exists {
-    ($result:ident, $resource_type:literal, $resource_name:expr) => {
-        match $result {
-            Ok(_) => info!("Create {} {}", $resource_type, $resource_name),
-            Err(Error::Api(ae)) if ae.code == 409 => {
-                info!("{} {} already exists", $resource_type, $resource_name)
-            }
-            Err(e) => return Err(e.into()),
-        }
-    };
-}
 
 pub async fn generate_kbs_auth_public_key(
     client: Client,
