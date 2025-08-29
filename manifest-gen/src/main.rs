@@ -113,7 +113,7 @@ fn generate_operator(args: &Args) -> Result<()> {
 
     let cluster_role = ClusterRole {
         metadata: ObjectMeta {
-            name: Some(format!("{}-role", service_account_name)),
+            name: Some(format!("{service_account_name}-role")),
             ..Default::default()
         },
         rules: Some(vec![
@@ -142,13 +142,13 @@ fn generate_operator(args: &Args) -> Result<()> {
 
     let cluster_role_binding = ClusterRoleBinding {
         metadata: ObjectMeta {
-            name: Some(format!("{}-rolebinding", service_account_name)),
+            name: Some(format!("{service_account_name}-rolebinding")),
             ..Default::default()
         },
         role_ref: RoleRef {
             api_group: "rbac.authorization.k8s.io".to_string(),
             kind: "ClusterRole".to_string(),
-            name: format!("{}-role", service_account_name),
+            name: format!("{service_account_name}-role"),
         },
         subjects: Some(vec![Subject {
             kind: "ServiceAccount".to_string(),
