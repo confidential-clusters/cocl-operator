@@ -1,6 +1,9 @@
+use chrono::{DateTime, Utc};
+use compute_pcrs_lib::Pcr;
 use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[kube(
@@ -10,8 +13,24 @@ use serde::{Deserialize, Serialize};
     namespaced,
     plural = "confidentialclusters"
 )]
+#[serde(rename_all = "camelCase")]
 pub struct ConfidentialClusterSpec {
     pub trustee: Trustee,
+    pub pcrs_compute_image: String,
+}
+
+pub const PCR_CONFIG_MAP: &str = "image-pcrs";
+pub const PCR_CONFIG_FILE: &str = "image-pcrs.json";
+
+#[derive(Deserialize, Serialize)]
+pub struct ImagePcr {
+    pub first_seen: DateTime<Utc>,
+    pub pcrs: Vec<Pcr>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ImagePcrs {
+    pub pcrs: BTreeMap<String, ImagePcr>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

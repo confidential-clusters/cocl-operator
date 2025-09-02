@@ -10,4 +10,5 @@ if ${RUNTIME} exec -ti kind-control-plane crictl inspecti ${IMAGE} &> /dev/null 
 fi
 
 kubectl delete deploy cocl-operator -n confidential-clusters || true
+kubectl delete job compute-pcrs -n confidential-clusters || true
 
