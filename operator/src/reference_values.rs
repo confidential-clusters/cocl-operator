@@ -3,7 +3,7 @@ use serde::{Serialize, Serializer};
 
 fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
 where
-    S: Serializer
+    S: Serializer,
 {
     s.serialize_str(&d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
