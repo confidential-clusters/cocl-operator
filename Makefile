@@ -1,4 +1,6 @@
-K8S_VERSION ?= 1.33
+
+.PHONY: all build tools manifests-dir manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
+
 KUBECTL=kubectl
 
 REGISTRY ?= quay.io
@@ -7,10 +9,10 @@ IMAGE=$(REGISTRY)/confidential-clusters/cocl-operator:latest
 all: build tools
 
 build:
-	K8S_OPENAPI_ENABLED_VERSION=$(K8S_VERSION) cargo build -p operator
+	cargo build -p operator
 
 tools:
-	K8S_OPENAPI_ENABLED_VERSION=$(K8S_VERSION) cargo build -p manifest-gen
+	cargo build -p manifest-gen
 
 manifests-dir:
 	mkdir -p manifests
@@ -45,3 +47,17 @@ install:
 clean:
 	cargo clean
 	rm -rf manifests
+
+fmt-check:
+	cargo fmt -- --check
+
+clippy:
+	cargo clippy --all-targets --all-features -- -D warnings
+
+lint: fmt-check clippy
+
+test:
+	cargo test --workspace --all-targets
+
+test-release:
+	cargo test --workspace --all-targets --release
