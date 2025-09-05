@@ -1,0 +1,60 @@
+name: Basic CI test for Rust
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'operator/**'
+      - 'crds/**'
+      - 'manifest-gen/**'
+      - '.github/workflows/cocl_basic_ci.yaml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'operator/**'
+      - 'crds/**'
+      - 'manifest-gen/**'
+      - '.github/workflows/cocl_basic_ci.yaml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  create:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  basic_ci:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+        target:
+          - x86_64-unknown-linux-gnu
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.target }}
+          components: rustfmt, clippy
+          override: true
+
+      - name: Run cargo fmt check
+        run: cargo fmt --all --  --check
+
+      - name: Run rust lint check
+        run: cargo clippy -- -D warnings
+
+      - name: Run cargo test
+        run: cargo test --all
