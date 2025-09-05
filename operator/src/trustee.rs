@@ -145,7 +145,7 @@ pub async fn generate_reference_values(
             if let serde_json::Value::String(hex) = value
                 && hex
                     .chars()
-                    .all(|c| (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+                    .all(|c| matches!(c, '0'..='9' | 'a'..='f'))
             {
                 Ok(ReferenceValue {
                     version: "0.1.0".to_string(),
