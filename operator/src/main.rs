@@ -22,6 +22,7 @@ enum Error {}
 
 #[derive(Clone)]
 struct ContextData {
+    #[allow(dead_code)]
     client: Client,
 }
 

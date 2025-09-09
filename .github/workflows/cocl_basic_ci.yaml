@@ -1,0 +1,80 @@
+name: Basic CI test for Rust
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'operator/**'
+      - 'crds/**'
+      - 'manifest-gen/**'
+      - '.github/workflows/cocl_basic_ci.yaml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned toolchain for linting
+  ACTIONS_LINTS_TOOLCHAIN: 1.89.0
+
+jobs:
+  lint:
+    name: Lint with pinned toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
+          components: rustfmt, clippy
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Run lint checks
+        run: make lint
+
+  build_and_test:
+    name: ${{ matrix.rust }} / ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - beta
+        profile:
+          - dev
+          - release
+        target:
+          - x86_64-unknown-linux-gnu
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run cargo test
+        continue-on-error: ${{ matrix.rust == 'beta' }}
+        run: |
+          if [ "${{ matrix.profile }}" == "release" ]; then
+            make test-release
+          else
+            make test
+          fi
