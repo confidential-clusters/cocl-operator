@@ -365,3 +365,77 @@ pub async fn generate_kbs(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body_util::BodyExt;
+    use hyper::http;
+    use kube::client::Body;
+    use serde_json::json;
+    use tower::ServiceBuilder;
+    use tower_test::mock;
+
+    #[tokio::test]
+    async fn test_generate_kbs_auth_public_key_creates_secret() {
+        // 1. Setup the mock K8s API server
+        let (mock_service, mut handle) = mock::pair::<http::Request<Body>, http::Response<Body>>();
+        let service = ServiceBuilder::new().service(mock_service);
+        let client = Client::new(service, "default");
+
+        // 2. Define the expected API call and the response in a separate task
+        let handle = tokio::spawn(async move {
+            // Expect a single request to create a Secret
+            let (request, send) = handle
+                .next_request()
+                .await
+                .expect("service received a request");
+
+            // Assertions on the request
+            assert_eq!(request.method(), "POST");
+            assert_eq!(
+                request.uri().path(),
+                "/api/v1/namespaces/test-namespace/secrets"
+            );
+
+            // Extract and deserialize the body to check its content
+            let body_bytes = request.into_body().collect().await.unwrap().to_bytes();
+            let secret: Secret = serde_json::from_slice(&body_bytes).unwrap();
+            assert_eq!(secret.metadata.name.as_deref(), Some("test-secret-name"));
+
+            // Check that the publicKey field exists and is not empty
+            let data = secret.data.unwrap();
+            let public_key_b64 = data.get("publicKey").unwrap();
+            assert!(!public_key_b64.0.is_empty());
+
+            // Send back a successful response
+            let response_secret = json!({
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "metadata": {
+                    "name": "test-secret-name",
+                    "namespace": "test-namespace"
+                }
+            });
+            let response = http::Response::builder()
+                .status(201)
+                .body(Body::from(response_secret.to_string().into_bytes()))
+                .unwrap();
+            send.send_response(response);
+        });
+
+        // 3. Call the function under test
+        let result =
+            generate_kbs_auth_public_key(client, "test-namespace", "test-secret-name").await;
+
+        // 4. Assert the function's result
+        assert!(result.is_ok());
+
+        // Wait for the mock server task to finish its assertions
+        handle.await.unwrap();
+
+        // 5. Cleanup filesystem side effects
+        let _ = fs::remove_file("privateKey");
+        let _ = fs::remove_file("publicKey");
+    }
+}
