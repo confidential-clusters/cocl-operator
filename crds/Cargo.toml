@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 k8s-openapi.workspace = true
-kube = { workspace = true, features = ["derive"] }
+kube.workspace = true
 schemars = { version = "0.8", features = ["derive"] }
-serde = { workspace = true, features = ["derive"] }
+serde.workspace = true
 serde_json.workspace = true

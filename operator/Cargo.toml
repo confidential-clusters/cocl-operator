@@ -6,15 +6,21 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 base64 = "0.22.1"
+chrono.workspace = true
+compute-pcrs-lib.workspace = true
 crds = { path = "../crds" }
 env_logger.workspace = true
 futures-util = "0.3.31"
+hex = "0.4.3"
 json-patch = "4.0.0"
 jsonptr = "0.7.1"
 k8s-openapi.workspace = true
 kube.workspace = true
 log.workspace = true
+oci-client = "0.15.0"
+oci-spec = "0.8.2"
 openssl = "0.10.73"
+rv-store = { path = "../rv-store" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror = "2.0.12"

@@ -1,32 +1,29 @@
+use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
-use crds::{KbsConfig, KbsConfigSpec, Trustee};
-use futures_util::StreamExt;
+use chrono::{DateTime, TimeDelta, Utc};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
-use k8s_openapi::api::{
-    batch::v1::{Job, JobSpec},
-    core::v1::{
-        ConfigMap, Container, ImageVolumeSource, PodSpec, PodTemplateSpec, Secret, Volume,
-        VolumeMount,
-    },
-};
-use kube::api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams};
-use kube::runtime::{
-    controller::{Action, Controller},
-    watcher,
-};
+use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
 use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
-use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc, time::Duration};
-use thiserror::Error;
+use serde::{Serialize, Serializer};
+use std::{collections::BTreeMap, fs};
 
-#[derive(Debug, Error)]
-enum Error {}
+use crds::{KbsConfig, KbsConfigSpec, Trustee};
+use rv_store::*;
+
+const HTTPS_KEY: &str = "kbs-https-key";
+const HTTPS_CERT: &str = "kbs-https-certificate";
+const REFERENCE_VALUES_FILE: &str = "reference-values.json";
 
 #[derive(Clone)]
-struct ContextData {
-    #[allow(dead_code)]
-    client: Client,
+pub struct RvContextData {
+    pub client: Client,
+    pub operator_namespace: String,
+    pub trustee_namespace: String,
+    pub pcrs_compute_image: String,
+    pub rv_map: String,
 }
 
 macro_rules! info_if_exists {
@@ -40,11 +37,37 @@ macro_rules! info_if_exists {
         }
     };
 }
+pub(crate) use info_if_exists;
 
-const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
+fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str(&d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
 
-const HTTPS_KEY: &str = "kbs-https-key";
-const HTTPS_CERT: &str = "kbs-https-certificate";
+/// Sync with Trustee
+/// reference_value_provider_service::reference_value::ReferenceValue
+/// (cannot import directly because its expiration doesn't serialize
+/// right)
+#[derive(Serialize)]
+struct ReferenceValue {
+    pub version: String,
+    pub name: String,
+    #[serde(serialize_with = "primitive_date_time_to_str")]
+    pub expiration: DateTime<Utc>,
+    pub value: serde_json::Value,
+}
+
+pub fn get_image_pcrs(image_pcrs_map: ConfigMap) -> anyhow::Result<ImagePcrs> {
+    let image_pcrs_data = image_pcrs_map
+        .data
+        .context("Image PCRs map existed, but had no data")?;
+    let image_pcrs_str = image_pcrs_data
+        .get(PCR_CONFIG_FILE)
+        .context("Image PCRs data existed, but had no file")?;
+    serde_json::from_str(image_pcrs_str).map_err(Into::into)
+}
 
 pub async fn generate_kbs_auth_public_key(
     client: Client,
@@ -144,115 +167,67 @@ pub async fn generate_kbs_configurations(
     Ok(())
 }
 
-async fn reconcile(job: Arc<Job>, ctx: Arc<ContextData>) -> Result<Action, Error> {
-    if let Some(status) = &job.status
-        && status.completion_time.is_some()
-        && let Some(ns) = &job.metadata.namespace
-        && let Some(name) = &job.metadata.name
-    {
-        let jobs: Api<Job> = Api::namespaced(ctx.client.clone(), ns);
-        if jobs.delete(name, &DeleteParams::default()).await.is_ok() {
-            return Ok(Action::await_change());
-        }
+pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()> {
+    let operator_config_maps: Api<ConfigMap> =
+        Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+    let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
+    let image_pcrs = get_image_pcrs(image_pcrs_map)?;
+    // TODO many grub+shim:many OS image recompute once supported
+    let mut reference_values_in = BTreeMap::from([(
+        "svn".to_string(),
+        vec![serde_json::Value::String("1".to_string())],
+    )]);
+    for pcr in image_pcrs.0.values().flat_map(|v| &v.pcrs) {
+        reference_values_in
+            .entry(format!("pcr{}", pcr.id))
+            .or_default()
+            .push(serde_json::Value::String(pcr.value.clone()));
     }
-    Ok(Action::requeue(Duration::from_secs(300)))
+    let reference_values: Vec<_> = reference_values_in
+        .iter()
+        .map(|(name, values)| ReferenceValue {
+            version: "0.1.0".to_string(),
+            name: format!("tpm_{name}"),
+            expiration: Utc::now() + TimeDelta::days(365),
+            value: serde_json::Value::Array(values.to_vec()),
+        })
+        .collect();
+    let reference_values_json = serde_json::to_string(&reference_values)?;
+    let data = BTreeMap::from([(
+        REFERENCE_VALUES_FILE.to_string(),
+        reference_values_json.to_string(),
+    )]);
+
+    let trustee_config_maps: Api<ConfigMap> = Api::namespaced(ctx.client, &ctx.trustee_namespace);
+    let mut rvs = trustee_config_maps.get(&ctx.rv_map).await?;
+    rvs.data = Some(data);
+    trustee_config_maps
+        .replace(&ctx.rv_map, &PostParams::default(), &rvs)
+        .await?;
+    Ok(())
 }
 
-fn error_policy(_obj: Arc<Job>, _error: &Error, _ctx: Arc<ContextData>) -> Action {
-    Action::requeue(Duration::from_secs(60))
-}
-
-pub async fn launch_rv_job_controller(client: Client, namespace: &str) {
-    let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
-    let context = Arc::new(ContextData { client });
-    // refine watcher if we handle more than one type of job
-    tokio::spawn(
-        Controller::new(jobs, watcher::Config::default())
-            .run::<_, ContextData>(reconcile, error_policy, context)
-            .for_each(|res| async move {
-                match res {
-                    Ok(o) => info!("reconciled {o:?}"),
-                    Err(e) => info!("reconcile failed: {e:?}"),
-                }
-            }),
-    );
-}
-
-pub async fn generate_reference_values(
+pub async fn create_reference_value_config_map(
     client: Client,
-    job_namespace: &str,
-    trustee_namespace: &str,
+    namespace: &str,
     name: &str,
-    pcrs_compute_image: &str,
 ) -> anyhow::Result<()> {
-    let job_name = "compute-pcrs";
-    let volume_name = "image";
-    let mountpoint = PathBuf::from("/image");
-
-    let mut cmd = vec![job_name.to_string()];
-    let mut add_flag = |flag: &str, value: &str| {
-        cmd.push(format!("--{flag}"));
-        cmd.push(value.to_string());
-    };
-    for (flag, path_suffix) in [
-        ("kernels", "usr/lib/modules"),
-        ("esp", "usr/lib/bootupd/updates"),
-    ] {
-        let full_path = mountpoint.join(path_suffix);
-        add_flag(flag, full_path.to_str().unwrap());
-    }
-    for (flag, value) in [
-        ("configmap", name),
-        ("namespace", trustee_namespace),
-        ("efivars", "/reference-values/efivars/qemu-ovmf/fedora-42"),
-        ("mokvars", "/reference-values/mok-variables/fedora-42"),
-    ] {
-        add_flag(flag, value);
-    }
-
-    let pod_spec = PodSpec {
-        service_account_name: Some("compute-pcrs".to_string()),
-        containers: vec![Container {
-            name: job_name.to_string(),
-            image: Some(pcrs_compute_image.to_string()),
-            command: Some(cmd),
-            volume_mounts: Some(vec![VolumeMount {
-                name: volume_name.to_string(),
-                mount_path: mountpoint.to_str().unwrap().to_string(),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        }],
-        volumes: Some(vec![Volume {
-            name: volume_name.to_string(),
-            image: Some(ImageVolumeSource {
-                reference: Some(BOOT_IMAGE.to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }]),
-        restart_policy: Some("Never".to_string()),
-        ..Default::default()
-    };
-    let job = Job {
+    let empty_data = BTreeMap::from([(REFERENCE_VALUES_FILE.to_string(), "{}".to_string())]);
+    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
+    let config_map = ConfigMap {
         metadata: ObjectMeta {
-            name: Some(job_name.to_string()),
-            namespace: Some(job_namespace.to_string()),
+            name: Some(name.to_string()),
+            namespace: Some(namespace.to_string()),
             ..Default::default()
         },
-        spec: Some(JobSpec {
-            template: PodTemplateSpec {
-                spec: Some(pod_spec),
-                ..Default::default()
-            },
-            ..Default::default()
-        }),
+        data: Some(empty_data),
         ..Default::default()
     };
+    let create = config_maps
+        .create(&PostParams::default(), &config_map)
+        .await;
+    info_if_exists!(create, "ConfigMap", name);
 
-    let jobs: Api<Job> = Api::namespaced(client.clone(), job_namespace);
-    let create = jobs.create(&PostParams::default(), &job).await;
-    info_if_exists!(create, "Job", job_name);
     Ok(())
 }
 
