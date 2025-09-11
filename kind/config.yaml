@@ -9,3 +9,5 @@ nodes:
   extraPortMappings:
   - containerPort: 31000
     hostPort: 8080
+featureGates:
+  "ImageVolume": true

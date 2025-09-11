@@ -1,31 +1,50 @@
-use anyhow::anyhow;
 use base64::{Engine as _, engine::general_purpose};
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
+use futures_util::StreamExt;
 use json_patch::{AddOperation, PatchOperation, TestOperation};
-use k8s_openapi::api::core::v1::{ConfigMap, Secret};
-use kube::api::{Patch, PatchParams, PostParams};
-use kube::{Api, Client, Error};
+use k8s_openapi::api::{
+    batch::v1::{Job, JobSpec},
+    core::v1::{
+        ConfigMap, Container, ImageVolumeSource, PodSpec, PodTemplateSpec, Secret, Volume,
+        VolumeMount,
+    },
+};
+use kube::api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams};
+use kube::runtime::{
+    controller::{Action, Controller},
+    watcher,
+};
+use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
-use std::collections::BTreeMap;
-use std::fs;
+use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc, time::Duration};
+use thiserror::Error;
 
-use crate::reference_values::ReferenceValue;
+#[derive(Debug, Error)]
+enum Error {}
 
-const HTTPS_KEY: &str = "kbs-https-key";
-const HTTPS_CERT: &str = "kbs-https-certificate";
+#[derive(Clone)]
+struct ContextData {
+    #[allow(dead_code)]
+    client: Client,
+}
 
 macro_rules! info_if_exists {
     ($result:ident, $resource_type:literal, $resource_name:expr) => {
         match $result {
             Ok(_) => info!("Create {} {}", $resource_type, $resource_name),
-            Err(Error::Api(ae)) if ae.code == 409 => {
+            Err(kube::Error::Api(ae)) if ae.code == 409 => {
                 info!("{} {} already exists", $resource_type, $resource_name)
             }
             Err(e) => return Err(e.into()),
         }
     };
 }
+
+const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
+
+const HTTPS_KEY: &str = "kbs-https-key";
+const HTTPS_CERT: &str = "kbs-https-certificate";
 
 pub async fn generate_kbs_auth_public_key(
     client: Client,
@@ -125,61 +144,115 @@ pub async fn generate_kbs_configurations(
     Ok(())
 }
 
+async fn reconcile(job: Arc<Job>, ctx: Arc<ContextData>) -> Result<Action, Error> {
+    if let Some(status) = &job.status
+        && status.completion_time.is_some()
+        && let Some(ns) = &job.metadata.namespace
+        && let Some(name) = &job.metadata.name
+    {
+        let jobs: Api<Job> = Api::namespaced(ctx.client.clone(), ns);
+        if jobs.delete(name, &DeleteParams::default()).await.is_ok() {
+            return Ok(Action::await_change());
+        }
+    }
+    Ok(Action::requeue(Duration::from_secs(300)))
+}
+
+fn error_policy(_obj: Arc<Job>, _error: &Error, _ctx: Arc<ContextData>) -> Action {
+    Action::requeue(Duration::from_secs(60))
+}
+
+pub async fn launch_rv_job_controller(client: Client, namespace: &str) {
+    let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
+    let context = Arc::new(ContextData { client });
+    // refine watcher if we handle more than one type of job
+    tokio::spawn(
+        Controller::new(jobs, watcher::Config::default())
+            .run::<_, ContextData>(reconcile, error_policy, context)
+            .for_each(|res| async move {
+                match res {
+                    Ok(o) => info!("reconciled {o:?}"),
+                    Err(e) => info!("reconcile failed: {e:?}"),
+                }
+            }),
+    );
+}
+
 pub async fn generate_reference_values(
     client: Client,
-    namespace: &str,
+    job_namespace: &str,
+    trustee_namespace: &str,
     name: &str,
+    pcrs_compute_image: &str,
 ) -> anyhow::Result<()> {
-    let reference_values_in_json = include_str!("reference-values-in.json");
-    let mut reference_values_in = match serde_json::from_str(reference_values_in_json)? {
-        serde_json::Value::Object(vals) => vals,
-        _ => return Err(anyhow!("Reference values had unexpected shape")),
+    let job_name = "compute-pcrs";
+    let volume_name = "image";
+    let mountpoint = PathBuf::from("/image");
+
+    let mut cmd = vec![job_name.to_string()];
+    let mut add_flag = |flag: &str, value: &str| {
+        cmd.push(format!("--{flag}"));
+        cmd.push(value.to_string());
     };
-    reference_values_in.insert(
-        "svn".to_string(),
-        serde_json::Value::String("1".to_string()),
-    );
-    let reference_values = reference_values_in
-        .iter()
-        .map(|(name, value)| {
-            if let serde_json::Value::String(hex) = value
-                && hex.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
-            {
-                Ok(ReferenceValue {
-                    version: "0.1.0".to_string(),
-                    name: format!("tpm_{name}"),
-                    expiration: chrono::DateTime::<chrono::Utc>::MAX_UTC,
-                    value: serde_json::Value::Array(vec![value.clone()]),
-                })
-            } else {
-                Err(anyhow!("Reference value '{value}' had unexpected shape"))
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let reference_values_json = serde_json::to_string(&reference_values)?;
+    for (flag, path_suffix) in [
+        ("kernels", "usr/lib/modules"),
+        ("esp", "usr/lib/bootupd/updates"),
+    ] {
+        let full_path = mountpoint.join(path_suffix);
+        add_flag(flag, full_path.to_str().unwrap());
+    }
+    for (flag, value) in [
+        ("configmap", name),
+        ("namespace", trustee_namespace),
+        ("efivars", "/reference-values/efivars/qemu-ovmf/fedora-42"),
+        ("mokvars", "/reference-values/mok-variables/fedora-42"),
+    ] {
+        add_flag(flag, value);
+    }
 
-    let mut data = BTreeMap::new();
-    data.insert(
-        "reference-values.json".to_string(),
-        reference_values_json.to_string(),
-    );
-
-    let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(namespace.to_string()),
+    let pod_spec = PodSpec {
+        service_account_name: Some("compute-pcrs".to_string()),
+        containers: vec![Container {
+            name: job_name.to_string(),
+            image: Some(pcrs_compute_image.to_string()),
+            command: Some(cmd),
+            volume_mounts: Some(vec![VolumeMount {
+                name: volume_name.to_string(),
+                mount_path: mountpoint.to_str().unwrap().to_string(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }],
+        volumes: Some(vec![Volume {
+            name: volume_name.to_string(),
+            image: Some(ImageVolumeSource {
+                reference: Some(BOOT_IMAGE.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]),
+        restart_policy: Some("Never".to_string()),
+        ..Default::default()
+    };
+    let job = Job {
+        metadata: ObjectMeta {
+            name: Some(job_name.to_string()),
+            namespace: Some(job_namespace.to_string()),
             ..Default::default()
         },
-        data: Some(data),
+        spec: Some(JobSpec {
+            template: PodTemplateSpec {
+                spec: Some(pod_spec),
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
-    info_if_exists!(create, "ConfigMap", name);
-
+    let jobs: Api<Job> = Api::namespaced(client.clone(), job_namespace);
+    let create = jobs.create(&PostParams::default(), &job).await;
+    info_if_exists!(create, "Job", job_name);
     Ok(())
 }
 
