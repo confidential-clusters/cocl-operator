@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -xe
+
 OP_FRMWK_VERSION=0.31.0
 
 source scripts/common.sh
@@ -9,9 +11,19 @@ export KUBECONFIG=$(pwd)/.kubeconfig
 
 curl -sL \
 	https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v${OP_FRMWK_VERSION}/install.sh | \
-	bash -s v${OP_FRMWK_VERSION}
+	bash -s v${OP_FRMWK_VERSION} || true
 
-namespace=operators
+namespace=trustee-operator-system
+kubectl create ns $namespace
+
+kubectl apply -f - << EOF
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: trustee-operator-group
+  namespace: $namespace
+EOF
+
 
 kubectl apply -f - << EOF
 apiVersion: operators.coreos.com/v1alpha1
