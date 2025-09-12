@@ -1,6 +1,9 @@
 
 .PHONY: all build tools manifests-dir manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
+NAMESPACE ?=confidential-clusters
+TRUSTEE_NAMESPACE ?= trustee-operator-system
+
 KUBECTL=kubectl
 
 REGISTRY ?= quay.io
@@ -20,8 +23,9 @@ manifests-dir:
 
 manifests: tools
 	target/debug/manifest-gen --output-dir manifests \
+		--namespace $(NAMESPACE) \
 		--image $(OPERATOR_IMAGE) \
-		--trustee-namespace operators \
+		--trustee-namespace $(TRUSTEE_NAMESPACE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE)
 
 cluster-up:
