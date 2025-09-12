@@ -14,6 +14,7 @@ use log::{error, info};
 use thiserror::Error;
 
 use crds::ConfidentialCluster;
+mod reference_values;
 mod trustee;
 
 #[derive(Debug, Error)]
@@ -24,6 +25,8 @@ struct ContextData {
     #[allow(dead_code)]
     client: Client,
 }
+
+const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
 
 async fn list_confidential_clusters(
     client: Client,
@@ -91,22 +94,37 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
         Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
-    trustee::launch_rv_job_controller(client.clone(), &namespace).await;
-
-    match trustee::generate_reference_values(
+    let rv_ctx = trustee::RvContextData {
+        client: client.clone(),
+        operator_namespace: namespace.clone(),
+        trustee_namespace: trustee_namespace.clone(),
+        pcrs_compute_image: cocl.spec.pcrs_compute_image,
+        rv_map: cocl.spec.trustee.reference_values.clone(),
+    };
+    reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
+    match reference_values::create_pcrs_config_map(client.clone(), &namespace).await {
+        Ok(_) => info!("Created bare configmap for PCRs"),
+        Err(e) => error!("Failed to create the PCRs configmap: {e}"),
+    }
+    match trustee::create_reference_value_config_map(
         client.clone(),
-        &namespace,
         &trustee_namespace,
         &cocl.spec.trustee.reference_values,
-        &cocl.spec.pcrs_compute_image,
     )
     .await
     {
         Ok(_) => info!(
-            "Generate configmap for the reference values: {}",
+            "Created bare configmap for the reference values: {}",
             cocl.spec.trustee.reference_values
         ),
         Err(e) => error!("Failed to create the reference values configmap: {e}"),
+    }
+    // TODO machine config input
+    match reference_values::handle_new_image(rv_ctx, BOOT_IMAGE).await {
+        Ok(_) => info!("Computed or retrieved reference values for image: {BOOT_IMAGE}",),
+        Err(e) => {
+            error!("Failed to compute or retrieve reference values for image {BOOT_IMAGE}: {e}",)
+        }
     }
 
     match trustee::generate_resource_policy(

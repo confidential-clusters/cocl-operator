@@ -138,6 +138,19 @@ fn generate_operator(args: &Args) -> Result<()> {
                 ..Default::default()
             },
             PolicyRule {
+                api_groups: Some(vec!["".to_string()]),
+                resources: Some(vec![ConfigMap::plural(&()).to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "watch".to_string(),
+                    "patch".to_string(),
+                    "update".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
                 api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
                 resources: Some(vec![ConfidentialCluster::plural(&()).to_string()]),
                 verbs: vec![
@@ -192,7 +205,7 @@ fn generate_operator(args: &Args) -> Result<()> {
     let compute_pcrs_role = Role {
         metadata: ObjectMeta {
             name: Some(format!("{compute_pcrs_service_account_name}-role")),
-            namespace: Some(args.trustee_namespace.clone()),
+            namespace: Some(namespace.clone()),
             ..Default::default()
         },
         rules: Some(vec![PolicyRule {
@@ -213,7 +226,7 @@ fn generate_operator(args: &Args) -> Result<()> {
     let compute_pcrs_role_binding = RoleBinding {
         metadata: ObjectMeta {
             name: Some(format!("{compute_pcrs_service_account_name}-rolebinding")),
-            namespace: Some(args.trustee_namespace.clone()),
+            namespace: Some(namespace.clone()),
             ..Default::default()
         },
         role_ref: RoleRef {

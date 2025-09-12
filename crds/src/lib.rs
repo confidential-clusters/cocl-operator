@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
     namespaced,
     plural = "confidentialclusters"
 )]
+#[serde(rename_all = "camelCase")]
 pub struct ConfidentialClusterSpec {
     pub trustee: Trustee,
     pub pcrs_compute_image: String,

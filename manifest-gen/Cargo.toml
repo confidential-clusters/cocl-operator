@@ -5,10 +5,10 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-env_logger.workspace = true
 clap = { workspace = true, features = ["derive"] }
 crds = { path = "../crds" }
+env_logger.workspace = true
 k8s-openapi.workspace = true
-kube = { workspace = true, features = ["derive"] }
+kube.workspace = true
 log.workspace = true
 serde_yaml = "0.9"
