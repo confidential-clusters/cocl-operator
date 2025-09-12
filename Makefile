@@ -5,6 +5,8 @@
 
 .PHONY: all build tools manifests-dir manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
+NAMESPACE ?= confidential-clusters
+
 KUBECTL=kubectl
 
 REGISTRY ?= quay.io
@@ -36,6 +38,7 @@ ifndef TRUSTEE_ADDR
 	$(error TRUSTEE_ADDR is undefined)
 endif
 	target/debug/manifest-gen --output-dir manifests \
+		--namespace $(NAMESPACE) \
 		--image $(OPERATOR_IMAGE) \
 		--trustee-image $(TRUSTEE_IMAGE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
