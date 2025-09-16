@@ -1,0 +1,17 @@
+version = 1
+
+[[annotations]]
+path = [
+  "README.md",
+  "Cargo.lock",
+  "operator/src/as-config.json",
+  "operator/src/kbs-config.toml",
+  "operator/src/resource.rego",
+  "operator/src/rvps-config.json",
+  "operator/src/tpm.rego"
+]
+SPDX-FileCopyrightText = [
+    "Alice Frosi <afrosi@redhat.com>",
+    "Jakob Naucke <jnaucke@redhat.com>"
+]
+SPDX-License-Identifier = "CC0-1.0"

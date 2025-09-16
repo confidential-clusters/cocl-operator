@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
 [workspace]
 members = ["compute-pcrs", "crds", "manifest-gen", "operator", "rv-store"]
 resolver = "3"

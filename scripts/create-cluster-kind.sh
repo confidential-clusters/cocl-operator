@@ -1,4 +1,10 @@
 #!/bin/sh
+
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
 set -o errexit
 
 source scripts/common.sh
