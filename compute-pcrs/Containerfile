@@ -1,4 +1,4 @@
-FROM ghcr.io/confidential-clusters/compute-pcrs/buildroot AS builder
+FROM ghcr.io/confidential-clusters/buildroot AS builder
 WORKDIR /compute-pcrs
 COPY Cargo.toml Cargo.lock .
 COPY compute-pcrs compute-pcrs
