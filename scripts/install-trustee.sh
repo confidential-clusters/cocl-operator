@@ -33,27 +33,19 @@ kubectl_do_csv() {
 	kubectl "$verb" -n "$namespace" csv "$operator" "$@"
 }
 
-kubectl_get_csv_env_name() {
-	kubectl_do_csv get \
-		-o jsonpath="{.spec.install.spec.deployments[0].spec.template.spec.containers[0].env[$1].name}"
-}
-
-kubectl_patch_csv_env_value() {
-	kubectl_do_csv patch --type="json" \
-		-p="[{'op': 'replace', 'path': '/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/$1/value', 'value':$2}]"
-}
-
 kubectl_do_csv wait --for=create --timeout=90s
 kubectl_do_csv wait --for=jsonpath="{.status.phase}"=Succeeded
 
-if [ "$(kubectl_get_csv_env_name 2)" != "KBS_IMAGE_NAME_MICROSERVICES" ] || \
-	[ "$(kubectl_get_csv_env_name 3)" != "AS_IMAGE_NAME" ]; then
+if [ "$(kubectl_do_csv get -o \
+		jsonpath="{.spec.install.spec.deployments[0].spec.template.spec.containers[0].env[1].name}")" \
+			!= "KBS_IMAGE_NAME" ]; then
 	echo "Unexpected change in Trustee CSV environment order"
-	exit 1
 fi
 
-kubectl_patch_csv_env_value 2 "quay.io/afrosi_rh/kbs-grpc-as:latest"
-kubectl_patch_csv_env_value 3 "quay.io/afrosi_rh/coco-as-grpc:latest"
+# TODO add support for TPM AK verification, then move to a KBS with implemented verifier
+kubectl_do_csv patch --type="json" -p="[{'op': 'replace', \
+  'path': '/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/1/value', \
+  'value': 'quay.io/confidential-clusters/key-broker-service:tpm-verifier-built-in-as-20250711'}]"
 
 kubectl apply -f - << EOF
 apiVersion: v1

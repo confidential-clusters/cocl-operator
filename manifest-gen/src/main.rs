@@ -353,8 +353,6 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
             trustee: Trustee {
                 namespace: args.trustee_namespace.clone(),
                 kbs_configuration: "kbs-config-map".to_string(),
-                as_configuration: "as-config-map".to_string(),
-                rvps_configuration: "rvps-config-map".to_string(),
                 attestation_policy: "attestation-policy-data".to_string(),
                 resource_policy: "resource-policy-data".to_string(),
                 reference_values: "reference-values-data".to_string(),

@@ -139,30 +139,21 @@ pub async fn generate_kbs_configurations(
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
 
     let kbs_config = include_str!("kbs-config.toml");
-    let as_config = include_str!("as-config.json");
-    let rvps_config = include_str!("rvps-config.json");
-
-    for (filename, content, configmap) in [
-        ("kbs-config.toml", kbs_config, &trustee.kbs_configuration),
-        ("as-config.json", as_config, &trustee.as_configuration),
-        ("rvps-config.json", rvps_config, &trustee.rvps_configuration),
-    ] {
-        let data = BTreeMap::from([(filename.to_string(), content.to_string())]);
-        let config_map = ConfigMap {
-            metadata: kube::api::ObjectMeta {
-                name: Some(configmap.to_string()),
-                namespace: Some(namespace.to_string()),
-                ..Default::default()
-            },
-            data: Some(data),
+    let data = BTreeMap::from([("kbs-config.toml".to_string(), kbs_config.to_string())]);
+    let config_map = ConfigMap {
+        metadata: kube::api::ObjectMeta {
+            name: Some(trustee.kbs_configuration.to_string()),
+            namespace: Some(namespace.to_string()),
             ..Default::default()
-        };
+        },
+        data: Some(data),
+        ..Default::default()
+    };
 
-        let create = config_maps
-            .create(&PostParams::default(), &config_map)
-            .await;
-        info_if_exists!(create, "ConfigMap", configmap);
-    }
+    let create = config_maps
+        .create(&PostParams::default(), &config_map)
+        .await;
+    info_if_exists!(create, "ConfigMap", &trustee.kbs_configuration);
 
     Ok(())
 }
@@ -333,8 +324,13 @@ pub async fn generate_attestation_policy(
     name: &str,
 ) -> anyhow::Result<()> {
     let policy_rego = include_str!("tpm.rego");
-    let mut data = BTreeMap::new();
-    data.insert("default_cpu.rego".to_string(), policy_rego.to_string());
+    let data = BTreeMap::from([
+        ("default_cpu.rego".to_string(), policy_rego.to_string()),
+        // TODO may be able to remove after resolution of
+        // https://github.com/confidential-containers/trustee-operator/issues/100
+        // (see also #issuecomment-3299368068)
+        ("default_gpu.rego".to_string(), String::new()),
+    ]);
 
     let config_map = ConfigMap {
         metadata: kube::api::ObjectMeta {
@@ -392,10 +388,8 @@ pub async fn generate_kbs(
         },
         spec: KbsConfigSpec {
             kbs_config_map_name: trustee.kbs_configuration.clone(),
-            kbs_as_config_map_name: trustee.as_configuration.clone(),
-            kbs_rvps_config_map_name: trustee.rvps_configuration.clone(),
             kbs_auth_secret_name: trustee.kbs_auth_key.clone(),
-            kbs_deployment_type: "MicroservicesDeployment".to_string(),
+            kbs_deployment_type: "AllInOneDeployment".to_string(),
             kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
             kbs_secret_resources: vec![],
             kbs_https_key_secret_name: HTTPS_KEY.to_string(),
