@@ -11,9 +11,12 @@ REGISTRY ?= quay.io
 OPERATOR_IMAGE=$(REGISTRY)/confidential-clusters/cocl-operator:latest
 COMPUTE_PCRS_IMAGE=$(REGISTRY)/confidential-clusters/compute-pcrs:latest
 
+BUILD_TYPE ?= release
+
 all: build tools
 
 build:
+	cargo build -p compute-pcrs
 	cargo build -p operator
 
 tools:
@@ -34,11 +37,9 @@ cluster-up:
 cluster-down:
 	scripts/delete-cluster-kind.sh
 
-image: build
-	podman build -t $(OPERATOR_IMAGE) -f Containerfile .
-	podman build -t $(COMPUTE_PCRS_IMAGE) \
-		-f compute-pcrs/Containerfile \
-		--env K8S_OPENAPI_ENABLED_VERSION=$(K8S_VERSION) .
+image:
+	podman build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f Containerfile .
+	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
 
 # TODO: remove the tls-verify, right now we are pushing only on the local registry
 push: image
