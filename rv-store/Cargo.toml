@@ -3,6 +3,7 @@ name = "rv-store"
 version = "0.1.0"
 description = "Reference values store definition for operator and compute-pcrs"
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 chrono.workspace = true
