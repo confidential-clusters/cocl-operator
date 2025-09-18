@@ -459,6 +459,12 @@ mod tests {
         assert!(get_image_pcrs(config_map).is_err());
     }
 
+    #[test]
+    fn test_generate_luks_key_returns_correct_size() {
+        let jwk: ClevisKey = serde_json::from_slice(&generate_luks_key().unwrap()).unwrap();
+        assert_eq!(jwk.key.len(), 32);
+    }
+
     #[tokio::test]
     async fn test_generate_att_policy_success() {
         let ns = "test".to_string();
