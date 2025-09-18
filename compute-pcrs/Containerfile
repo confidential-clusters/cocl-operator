@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
 FROM ghcr.io/confidential-clusters/buildroot AS builder
 WORKDIR /compute-pcrs
 COPY Cargo.toml Cargo.lock .

@@ -46,3 +46,7 @@ The KBS port will be forwarded to `8080` on your machine.
 Run a VM as described in the
 [investigations](https://github.com/confidential-clusters/investigations?tab=readme-ov-file#example-with-the-confidential-clusters-operator-and-a-local-vm)
 repository.
+
+## Licenses
+
+See [LICENSES](LICENSES).

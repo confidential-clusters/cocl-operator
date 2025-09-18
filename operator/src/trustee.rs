@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+// SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+//
+// SPDX-License-Identifier: MIT
+
 use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
