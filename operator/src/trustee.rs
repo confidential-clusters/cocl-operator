@@ -25,7 +25,6 @@ const REFERENCE_VALUES_FILE: &str = "reference-values.json";
 #[derive(Clone)]
 pub struct RvContextData {
     pub client: Client,
-    pub operator_namespace: String,
     pub trustee_namespace: String,
     pub pcrs_compute_image: String,
     pub rv_map: String,
@@ -172,7 +171,7 @@ pub async fn generate_kbs_configurations(
 
 pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()> {
     let operator_config_maps: Api<ConfigMap> =
-        Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+        Api::namespaced(ctx.client.clone(), ctx.client.default_namespace());
     let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
     let image_pcrs = get_image_pcrs(image_pcrs_map)?;
     // TODO many grub+shim:many OS image recompute once supported

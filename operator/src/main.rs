@@ -33,12 +33,12 @@ struct ContextData {
 
 const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
 
-async fn list_confidential_clusters(
-    client: Client,
-    namespace: &str,
-) -> anyhow::Result<ConfidentialCluster> {
-    info!("Listing ConfidentialClusters in namespace '{namespace}'");
-    let api: Api<ConfidentialCluster> = Api::namespaced(client.clone(), namespace);
+async fn list_confidential_clusters(client: Client) -> anyhow::Result<ConfidentialCluster> {
+    info!(
+        "Listing ConfidentialClusters in namespace '{}'",
+        client.default_namespace()
+    );
+    let api: Api<ConfidentialCluster> = Api::default_namespaced(client.clone());
     let lp = ListParams::default();
     let list = api.list(&lp).await?;
     match list.items.len() {
@@ -62,8 +62,8 @@ fn error_policy(_obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<Contex
     Action::requeue(Duration::from_secs(60))
 }
 
-async fn install_trustee_configuration(client: Client, namespace: String) -> Result<()> {
-    let cocl = list_confidential_clusters(client.clone(), &namespace).await?;
+async fn install_trustee_configuration(client: Client) -> Result<()> {
+    let cocl = list_confidential_clusters(client.clone()).await?;
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
 
     match trustee::generate_kbs_auth_public_key(
@@ -101,13 +101,12 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
 
     let rv_ctx = trustee::RvContextData {
         client: client.clone(),
-        operator_namespace: namespace.clone(),
         trustee_namespace: trustee_namespace.clone(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image,
         rv_map: cocl.spec.trustee.reference_values.clone(),
     };
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
-    match reference_values::create_pcrs_config_map(client.clone(), &namespace).await {
+    match reference_values::create_pcrs_config_map(client.clone()).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
     }
@@ -171,7 +170,7 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
     // TODO replace this creation with a per-machine one.
     // This secret's address is `default/machine/root`.
     match trustee::generate_secret(
-        client.clone(),
+        client,
         &trustee_namespace,
         &cocl.spec.trustee.kbs_config_name,
         "machine",
@@ -190,14 +189,13 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let client = Client::try_default().await?;
-    let namespace = client.clone().default_namespace().to_string();
     let context = Arc::new(ContextData {
         client: client.clone(),
     });
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::namespaced(client.clone(), &namespace);
+    let cl = Api::<ConfidentialCluster>::default_namespaced(client.clone());
 
-    tokio::spawn(install_trustee_configuration(client.clone(), namespace));
+    tokio::spawn(install_trustee_configuration(client.clone()));
     Controller::new(cl, watcher::Config::default())
         .run::<_, ContextData>(reconcile, error_policy, context)
         .for_each(|res| async move {
