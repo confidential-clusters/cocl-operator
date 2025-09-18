@@ -26,3 +26,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror = "2.0.16"
 tokio.workspace = true
+
+[dev-dependencies]
+http = "1.1.0"
+tower = { version = "0.4.13", features = ["full"] }
+# Ensure tokio test features are enabled for async tests
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -16,7 +16,7 @@ pub struct ConfidentialClusterSpec {
     pub pcrs_compute_image: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Trustee {
     pub namespace: String,
     pub kbs_configuration: String,
@@ -29,7 +29,7 @@ pub struct Trustee {
     pub kbs_config_name: String,
 }
 
-#[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(CustomResource, Default, Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[kube(
     group = "confidentialcontainers.org",
     version = "v1alpha1",
