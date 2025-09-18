@@ -396,7 +396,68 @@ pub async fn generate_kbs_deployment(
 mod tests {
     use super::*;
     use crate::mock_client::*;
+    use compute_pcrs_lib::Pcr;
     use http::StatusCode;
+
+    #[test]
+    fn test_get_image_pcrs_success() {
+        let pcrs = BTreeMap::from([(
+            "cos".to_string(),
+            ImagePcr {
+                first_seen: Utc::now(),
+                pcrs: vec![
+                    Pcr {
+                        id: 0,
+                        value: "pcr0_val".to_string(),
+                        parts: vec![],
+                    },
+                    Pcr {
+                        id: 1,
+                        value: "pcr1_val".to_string(),
+                        parts: vec![],
+                    },
+                ],
+            },
+        )]);
+        let data = BTreeMap::from([(
+            PCR_CONFIG_FILE.to_string(),
+            serde_json::to_string(&pcrs).unwrap(),
+        )]);
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+        let image_pcrs = get_image_pcrs(config_map).unwrap();
+        assert_eq!(image_pcrs.0["cos"].pcrs.len(), 2);
+        assert_eq!(image_pcrs.0["cos"].pcrs[0].value, "pcr0_val");
+    }
+
+    #[test]
+    fn test_get_image_pcrs_no_data() {
+        let config_map = ConfigMap::default();
+        let err = get_image_pcrs(config_map).err().unwrap();
+        assert!(err.to_string().contains("but had no data"));
+    }
+
+    #[test]
+    fn test_get_image_pcrs_no_file() {
+        let config_map = ConfigMap {
+            data: Some(BTreeMap::new()),
+            ..Default::default()
+        };
+        let err = get_image_pcrs(config_map).err().unwrap();
+        assert!(err.to_string().contains("but had no file"));
+    }
+
+    #[test]
+    fn test_get_image_pcrs_invalid_json() {
+        let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), "not json".to_string())]);
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+        assert!(get_image_pcrs(config_map).is_err());
+    }
 
     #[tokio::test]
     async fn test_generate_att_policy_success() {
