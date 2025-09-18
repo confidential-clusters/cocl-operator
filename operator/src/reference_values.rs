@@ -47,16 +47,15 @@ struct ComputePcrsOutput {
     pcrs: Vec<Pcr>,
 }
 
-pub async fn create_pcrs_config_map(client: Client, namespace: &str) -> anyhow::Result<()> {
+pub async fn create_pcrs_config_map(client: Client) -> anyhow::Result<()> {
     let empty_data = BTreeMap::from([(
         PCR_CONFIG_FILE.to_string(),
         serde_json::to_string(&ImagePcrs::default())?,
     )]);
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
     let config_map = ConfigMap {
         metadata: ObjectMeta {
             name: Some(PCR_CONFIG_MAP.to_string()),
-            namespace: Some(namespace.to_string()),
             ..Default::default()
         },
         data: Some(empty_data),
@@ -85,11 +84,7 @@ async fn fetch_pcr_label(image_ref: &str) -> anyhow::Result<Option<Vec<Pcr>>> {
         .map_err(Into::into)
 }
 
-fn build_compute_pcrs_pod_spec(
-    namespace: &str,
-    boot_image: &str,
-    pcrs_compute_image: &str,
-) -> PodSpec {
+fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> PodSpec {
     let image_volume_name = "image";
     let image_mountpoint = PathBuf::from(format!("/{image_volume_name}"));
     let pcrs_volume_name = "pcrs";
@@ -111,7 +106,6 @@ fn build_compute_pcrs_pod_spec(
         ("efivars", "/reference-values/efivars/qemu-ovmf/fedora-42"),
         ("mokvars", "/reference-values/mok-variables/fedora-42"),
         ("image", boot_image),
-        ("namespace", namespace),
     ] {
         add_flag(flag, value);
     }
@@ -173,7 +167,7 @@ async fn job_reconcile(job: Arc<Job>, ctx: Arc<RvContextData>) -> Result<Action,
         info!("Job {name} changed, but had not completed");
         return Ok(Action::requeue(Duration::from_secs(300)));
     }
-    let jobs: Api<Job> = Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+    let jobs: Api<Job> = Api::default_namespaced(ctx.client.clone());
     jobs.delete(name, &DeleteParams::default())
         .await
         .map_err(Into::<anyhow::Error>::into)?;
@@ -187,7 +181,7 @@ fn job_error_policy(_obj: Arc<Job>, error: &Error, _ctx: Arc<RvContextData>) -> 
 }
 
 pub async fn launch_rv_job_controller(ctx: RvContextData) {
-    let jobs: Api<Job> = Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+    let jobs: Api<Job> = Api::default_namespaced(ctx.client.clone());
     let watcher = watcher::Config {
         label_selector: Some(format!("{JOB_LABEL_KEY}={PCR_COMMAND_NAME}")),
         ..Default::default()
@@ -206,7 +200,6 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
 
 async fn compute_fresh_pcrs(
     client: Client,
-    namespace: &str,
     boot_image: &str,
     pcrs_compute_image: &str,
 ) -> anyhow::Result<()> {
@@ -219,11 +212,10 @@ async fn compute_fresh_pcrs(
     let mut job_name = format!("{PCR_COMMAND_NAME}-{boot_image_hash_str}-{rfc1035_boot_image}");
     job_name.truncate(63);
 
-    let pod_spec = build_compute_pcrs_pod_spec(namespace, boot_image, pcrs_compute_image);
+    let pod_spec = build_compute_pcrs_pod_spec(boot_image, pcrs_compute_image);
     let job = Job {
         metadata: ObjectMeta {
             name: Some(job_name.clone()),
-            namespace: Some(namespace.to_string()),
             labels: Some(BTreeMap::from([(
                 JOB_LABEL_KEY.to_string(),
                 PCR_COMMAND_NAME.to_string(),
@@ -240,14 +232,14 @@ async fn compute_fresh_pcrs(
         ..Default::default()
     };
 
-    let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
+    let jobs: Api<Job> = Api::default_namespaced(client);
     let create = jobs.create(&PostParams::default(), &job).await;
     info_if_exists!(create, "Job", job_name);
     Ok(())
 }
 
 pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
-    let config_maps: Api<ConfigMap> = Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
     if image_pcrs.0.contains_key(boot_image) {
@@ -255,9 +247,8 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
     }
     let label = fetch_pcr_label(boot_image).await?;
     if label.is_none() {
-        let ns = &ctx.operator_namespace;
         let comp_img = &ctx.pcrs_compute_image;
-        return compute_fresh_pcrs(ctx.client.clone(), ns, boot_image, comp_img).await;
+        return compute_fresh_pcrs(ctx.client.clone(), boot_image, comp_img).await;
     }
 
     let image_pcr = ImagePcr {
@@ -279,7 +270,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
 
 #[allow(dead_code)]
 pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
-    let config_maps: Api<ConfigMap> = Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
     if image_pcrs.0.remove(boot_image).is_none() {

@@ -31,9 +31,6 @@ struct Args {
     /// Image reference
     #[arg(short, long)]
     image: String,
-    /// Namespace to write ConfigMap to
-    #[arg(short, long)]
-    namespace: String,
 }
 
 #[tokio::main]
@@ -47,7 +44,7 @@ async fn main() -> Result<()> {
     ];
 
     let client = Client::try_default().await?;
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, &args.namespace);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
 
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let image_pcrs_data = image_pcrs_map
