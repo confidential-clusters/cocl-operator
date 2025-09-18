@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
 // SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+// SPDX-FileCopyrightText: Dehan Meng <demeng@redhat.com>
 //
 // SPDX-License-Identifier: MIT
 
@@ -389,4 +390,43 @@ pub async fn generate_kbs_deployment(
     info_if_exists!(create, "Deployment", DEPLOYMENT_NAME);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_client::*;
+    use http::StatusCode;
+
+    #[tokio::test]
+    async fn test_generate_att_policy_success() {
+        let ns = "test".to_string();
+        let client = MockClient::new(StatusCode::OK, ConfigMap::default(), ns).into_client();
+        let result = generate_attestation_policy(client, Default::default()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_att_policy_already_exists() {
+        let ns = "test".to_string();
+        let client = MockClient::new(StatusCode::CONFLICT, ConfigMap::default(), ns).into_client();
+        let result = generate_attestation_policy(client, Default::default()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_att_policy_error() {
+        let ns = "test".to_string();
+        let config = ConfigMap::default();
+        let client = MockClient::new(StatusCode::INTERNAL_SERVER_ERROR, config, ns).into_client();
+        let result = generate_attestation_policy(client, Default::default()).await;
+        let err = result.unwrap_err();
+        assert_kube_api_error!(
+            err,
+            500,
+            "ServerTimeout",
+            "internal server error",
+            "Failure"
+        );
+    }
 }
