@@ -13,7 +13,7 @@ crds = { path = "../crds" }
 env_logger.workspace = true
 futures-util = "0.3.31"
 hex = "0.4.3"
-json-patch = "4.0.0"
+json-patch = "4.1.0"
 jsonptr = "0.7.1"
 k8s-openapi.workspace = true
 kube.workspace = true
@@ -24,5 +24,5 @@ openssl = "0.10.73"
 rv-store = { path = "../rv-store" }
 serde.workspace = true
 serde_json.workspace = true
-thiserror = "2.0.12"
+thiserror = "2.0.16"
 tokio.workspace = true
