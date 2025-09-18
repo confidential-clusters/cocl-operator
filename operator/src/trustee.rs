@@ -26,6 +26,13 @@ pub struct RvContextData {
     pub rv_map: String,
 }
 
+/// Sync with clevis-pin-trustee::Key
+#[derive(Serialize)]
+struct ClevisKey {
+    key_type: String,
+    key: String,
+}
+
 macro_rules! info_if_exists {
     ($result:ident, $resource_type:literal, $resource_name:expr) => {
         match $result {
@@ -231,10 +238,16 @@ pub async fn create_reference_value_config_map(
     Ok(())
 }
 
-fn generate_luks_key() -> anyhow::Result<[u8; 32]> {
-    let mut pass = [0; 32];
+fn generate_luks_key() -> anyhow::Result<Vec<u8>> {
+    // Constraint: 32 bytes b64-encoded, thus 24
+    let mut pass = [0; 24];
     openssl::rand::rand_bytes(&mut pass)?;
-    Ok(pass)
+    let key = general_purpose::STANDARD.encode(pass);
+    let jwk = ClevisKey {
+        key_type: "oct".to_string(),
+        key,
+    };
+    serde_json::to_vec(&jwk).map_err(Into::into)
 }
 
 pub async fn generate_secret(
@@ -243,8 +256,8 @@ pub async fn generate_secret(
     kbs_config_name: &str,
     id: &str,
 ) -> anyhow::Result<()> {
-    let pass = generate_luks_key()?;
-    let secret_data = k8s_openapi::ByteString(pass.to_vec());
+    let key = generate_luks_key()?;
+    let secret_data = k8s_openapi::ByteString(key);
     let data = BTreeMap::from([("root".to_string(), secret_data)]);
 
     let secret = Secret {
