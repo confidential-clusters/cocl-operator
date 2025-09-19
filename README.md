@@ -32,8 +32,7 @@ the operator.
 
 ```bash
 make cluster-up
-make REGISTRY=localhost:5000 image
-make REGISTRY=localhost:5000 push
+make REGISTRY=localhost:5000 image push # optional: use BUILD_TYPE=debug
 make REGISTRY=localhost:5000 manifests
 make install-trustee
 make install
