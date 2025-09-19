@@ -1,6 +1,0 @@
-{
-    "storage": {
-        "type": "LocalJson",
-        "file_path": "/opt/confidential-containers/rvps/reference-values/reference-values.json"
-    }
-}
