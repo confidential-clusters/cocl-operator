@@ -18,32 +18,12 @@ use serde_json::{Value::Array as JsonArray, Value::String as JsonString};
 use std::{collections::BTreeMap, fs};
 
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
+use operator::{RvContextData, info_if_exists};
 use rv_store::*;
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
 const REFERENCE_VALUES_FILE: &str = "reference-values.json";
-
-#[derive(Clone)]
-pub struct RvContextData {
-    pub client: Client,
-    pub trustee_namespace: String,
-    pub pcrs_compute_image: String,
-    pub rv_map: String,
-}
-
-macro_rules! info_if_exists {
-    ($result:ident, $resource_type:literal, $resource_name:expr) => {
-        match $result {
-            Ok(_) => info!("Create {} {}", $resource_type, $resource_name),
-            Err(kube::Error::Api(ae)) if ae.code == 409 => {
-                info!("{} {} already exists", $resource_type, $resource_name)
-            }
-            Err(e) => return Err(e.into()),
-        }
-    };
-}
-pub(crate) use info_if_exists;
 
 fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
 where
