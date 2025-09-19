@@ -20,22 +20,16 @@ use kube::runtime::{
     watcher,
 };
 use kube::{Api, Client};
-use log::{error, info};
+use log::info;
 use oci_client::secrets::RegistryAuth;
 use oci_spec::image::ImageConfiguration;
 use openssl::hash::{MessageDigest, hash};
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
-use thiserror::Error;
 
-use crate::trustee::{self, RvContextData, get_image_pcrs, info_if_exists};
+use crate::trustee::{self, get_image_pcrs};
+use operator::{ControllerError, RvContextData, controller_error_policy, info_if_exists};
 use rv_store::*;
-
-#[derive(Debug, Error)]
-enum Error {
-    #[error("{0}")]
-    Anyhow(#[from] anyhow::Error),
-}
 
 const JOB_LABEL_KEY: &str = "kind";
 const PCR_COMMAND_NAME: &str = "compute-pcrs";
@@ -158,7 +152,7 @@ fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> Po
     }
 }
 
-async fn job_reconcile(job: Arc<Job>, ctx: Arc<RvContextData>) -> Result<Action, Error> {
+async fn job_reconcile(job: Arc<Job>, ctx: Arc<RvContextData>) -> Result<Action, ControllerError> {
     let err = "Job changed, but had no name";
     let name = &job.metadata.name.clone().context(err)?;
     let err = format!("Job {name} changed, but had no status");
@@ -175,11 +169,6 @@ async fn job_reconcile(job: Arc<Job>, ctx: Arc<RvContextData>) -> Result<Action,
     Ok(Action::await_change())
 }
 
-fn job_error_policy(_obj: Arc<Job>, error: &Error, _ctx: Arc<RvContextData>) -> Action {
-    error!("{error}");
-    Action::requeue(Duration::from_secs(60))
-}
-
 pub async fn launch_rv_job_controller(ctx: RvContextData) {
     let jobs: Api<Job> = Api::default_namespaced(ctx.client.clone());
     let watcher = watcher::Config {
@@ -188,7 +177,7 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
     };
     tokio::spawn(
         Controller::new(jobs, watcher)
-            .run(job_reconcile, job_error_policy, Arc::new(ctx))
+            .run(job_reconcile, controller_error_policy, Arc::new(ctx))
             .for_each(|res| async move {
                 match res {
                     Ok(o) => info!("reconciled {o:?}"),
