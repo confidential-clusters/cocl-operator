@@ -12,6 +12,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 base64 = "0.22.1"
 chrono.workspace = true
+clevis-pin-trustee-lib.workspace = true
 compute-pcrs-lib.workspace = true
 crds = { path = "../crds" }
 env_logger.workspace = true

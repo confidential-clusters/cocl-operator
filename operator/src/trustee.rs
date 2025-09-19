@@ -6,6 +6,7 @@
 use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
+use clevis_pin_trustee_lib::Key as ClevisKey;
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
@@ -29,13 +30,6 @@ pub struct RvContextData {
     pub trustee_namespace: String,
     pub pcrs_compute_image: String,
     pub rv_map: String,
-}
-
-/// Sync with clevis-pin-trustee::Key
-#[derive(Serialize)]
-struct ClevisKey {
-    key_type: String,
-    key: String,
 }
 
 macro_rules! info_if_exists {

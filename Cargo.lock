@@ -368,6 +368,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
+name = "clevis-pin-trustee-lib"
+version = "0.1.0"
+source = "git+https://github.com/latchset/clevis-pin-trustee#42d26e17efc77e4a91a14d4da0a71dc158aa036d"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2112,6 +2120,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "clevis-pin-trustee-lib",
  "compute-pcrs-lib",
  "crds",
  "env_logger",
