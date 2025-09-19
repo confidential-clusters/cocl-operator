@@ -59,6 +59,10 @@ pub struct Args {
         default_value = "quay.io/confidential-clusters/register-server:latest"
     )]
     register_server_image: String,
+
+    /// Public Trustee address
+    #[arg(long)]
+    trustee_addr: String,
 }
 
 fn generate_operator(args: &Args) -> Result<()> {
@@ -259,6 +263,7 @@ fn generate_operator(args: &Args) -> Result<()> {
                     "get".to_string(),
                     "list".to_string(),
                     "delete".to_string(),
+                    "watch".to_string(),
                 ],
                 ..Default::default()
             },
@@ -459,6 +464,7 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
             },
             pcrs_compute_image: args.pcrs_compute_image.clone(),
             register_server_image: args.register_server_image.clone(),
+            trustee_addr: args.trustee_addr.clone(),
         },
     };
 

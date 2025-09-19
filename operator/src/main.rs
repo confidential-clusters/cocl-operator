@@ -182,18 +182,16 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create the KBS configuration: {e}"),
     }
 
-    // TODO replace this creation with a per-machine one.
-    // This secret's address is `default/machine/root`.
-    match trustee::generate_secret(
+    // Create a dummy secret. If there is no secret created early, trustee-operator does not allow
+    // for updating them later as it changes the KbsConfig structure to include no new keys.
+    let clevis_ctx = operator::ClevisContextData {
         client,
-        &trustee_namespace,
-        &cocl.spec.trustee.kbs_config_name,
-        "machine",
-    )
-    .await
-    {
-        Ok(_) => info!("Generate test secret"),
-        Err(e) => error!("Failed to create test secret: {e}"),
+        trustee_namespace: cocl.spec.trustee.namespace.clone(),
+        kbs_config: cocl.spec.trustee.kbs_config_name.clone(),
+    };
+    match trustee::generate_secret(clevis_ctx, "dummy").await {
+        Ok(_) => info!("Generate dummy secret"),
+        Err(e) => error!("Failed to create dummy secret: {e}"),
     }
 
     Ok(())
@@ -212,6 +210,7 @@ async fn install_register_server(client: Client) -> Result<()> {
         client.clone(),
         owner_reference.clone(),
         &cocl.spec.register_server_image,
+        &cocl.spec.trustee_addr,
     )
     .await
     {
@@ -219,10 +218,17 @@ async fn install_register_server(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create register server deployment: {e}"),
     }
 
-    match register_server::create_register_server_service(client, owner_reference).await {
+    match register_server::create_register_server_service(client.clone(), owner_reference).await {
         Ok(_) => info!("Register server service created/updated successfully"),
         Err(e) => error!("Failed to create register server service: {e}"),
     }
+
+    let clevis_ctx = operator::ClevisContextData {
+        client,
+        trustee_namespace: cocl.spec.trustee.namespace.clone(),
+        kbs_config: cocl.spec.trustee.kbs_config_name.clone(),
+    };
+    register_server::launch_keygen_controller(clevis_ctx).await;
 
     Ok(())
 }

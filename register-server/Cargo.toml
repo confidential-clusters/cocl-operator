@@ -10,8 +10,10 @@ rust-version.workspace = true
 
 [dependencies]
 clap.workspace = true
+clevis-pin-trustee-lib.workspace = true
 crds = { path = "../crds" }
 env_logger.workspace = true
+ignition-config = "0.5.0"
 k8s-openapi.workspace = true
 kube.workspace = true
 log.workspace = true

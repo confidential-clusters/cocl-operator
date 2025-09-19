@@ -19,6 +19,13 @@ pub struct RvContextData {
     pub rv_map: String,
 }
 
+#[derive(Clone)]
+pub struct ClevisContextData {
+    pub client: Client,
+    pub trustee_namespace: String,
+    pub kbs_config: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ControllerError {
     #[error("{0}")]

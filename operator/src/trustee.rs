@@ -18,7 +18,7 @@ use serde_json::{Value::Array as JsonArray, Value::String as JsonString};
 use std::{collections::BTreeMap, fs};
 
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
-use operator::{RvContextData, info_if_exists};
+use operator::{ClevisContextData, RvContextData, info_if_exists};
 use rv_store::*;
 
 const HTTPS_KEY: &str = "kbs-https-key";
@@ -218,12 +218,7 @@ fn generate_luks_key() -> anyhow::Result<Vec<u8>> {
     serde_json::to_vec(&jwk).map_err(Into::into)
 }
 
-pub async fn generate_secret(
-    client: Client,
-    namespace: &str,
-    kbs_config_name: &str,
-    id: &str,
-) -> anyhow::Result<()> {
+pub async fn generate_secret(ctx: ClevisContextData, id: &str) -> anyhow::Result<()> {
     let key = generate_luks_key()?;
     let secret_data = k8s_openapi::ByteString(key);
     let data = BTreeMap::from([("root".to_string(), secret_data)]);
@@ -231,21 +226,21 @@ pub async fn generate_secret(
     let secret = Secret {
         metadata: ObjectMeta {
             name: Some(id.to_string()),
-            namespace: Some(namespace.to_string()),
+            namespace: Some(ctx.trustee_namespace.to_string()),
             ..Default::default()
         },
         data: Some(data),
         ..Default::default()
     };
 
-    let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
+    let secrets: Api<Secret> = Api::namespaced(ctx.client.clone(), &ctx.trustee_namespace);
     let create = secrets.create(&PostParams::default(), &secret).await;
     info_if_exists!(create, "Secret", id);
 
-    let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
+    let kbs_configs: Api<KbsConfig> = Api::namespaced(ctx.client, &ctx.trustee_namespace);
 
     let existing_secrets = kbs_configs
-        .get(kbs_config_name)
+        .get(&ctx.kbs_config)
         .await?
         .spec
         .kbs_secret_resources;
@@ -274,8 +269,8 @@ pub async fn generate_secret(
     let patch: Patch<KbsConfig> = Patch::Json(json_patch);
     let params = PatchParams::default();
 
-    kbs_configs.patch(kbs_config_name, &params, &patch).await?;
-    info!("Added secret {id} to {kbs_config_name}");
+    kbs_configs.patch(&ctx.kbs_config, &params, &patch).await?;
+    info!("Added secret {id} to {}", ctx.kbs_config);
 
     Ok(())
 }

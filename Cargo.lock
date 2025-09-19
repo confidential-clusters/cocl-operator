@@ -1487,6 +1487,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ignition-config"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af04fbe2010de0eb96c19c2117f8bfacd2d6f4eee5b874995bede2957c99d6f2"
+dependencies = [
+ "anyhow",
+ "semver",
+ "serde",
+ "serde_ignored",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2543,8 +2557,10 @@ name = "register-server"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "clevis-pin-trustee-lib",
  "crds",
  "env_logger",
+ "ignition-config",
  "k8s-openapi",
  "kube",
  "log",
@@ -2923,6 +2939,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "serde_ignored"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b516445dac1e3535b6d658a7b528d771153dfb272ed4180ca4617a20550365ff"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

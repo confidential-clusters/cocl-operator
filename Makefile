@@ -30,11 +30,15 @@ manifests-dir:
 	mkdir -p manifests
 
 manifests: tools
+ifndef TRUSTEE_ADDR
+	$(error TRUSTEE_ADDR is undefined)
+endif
 	target/debug/manifest-gen --output-dir manifests \
 		--image $(OPERATOR_IMAGE) \
 		--trustee-namespace operators \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
-		--register-server-image $(REG_SERVER_IMAGE)
+		--register-server-image $(REG_SERVER_IMAGE) \
+		--trustee-addr $(TRUSTEE_ADDR):8080
 
 cluster-up:
 	scripts/create-cluster-kind.sh
@@ -61,6 +65,7 @@ install:
 	$(KUBECTL) apply -f manifests/operator.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_crd.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_cr.yaml
+	$(KUBECTL) apply -f kind/register-forward.yaml
 
 clean:
 	cargo clean

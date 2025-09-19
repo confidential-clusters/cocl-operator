@@ -20,6 +20,7 @@ pub struct ConfidentialClusterSpec {
     pub trustee: Trustee,
     pub pcrs_compute_image: String,
     pub register_server_image: String,
+    pub trustee_addr: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
