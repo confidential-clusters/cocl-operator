@@ -249,25 +249,25 @@ pub async fn generate_secret(
         .await?
         .spec
         .kbs_secret_resources;
-    if existing_secrets.iter().any(|s| s == id) {
+    if existing_secrets.contains(&id.to_string()) {
         info!("Secret with ID {id} already present");
         return Ok(());
     }
 
     let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;
-    let expected_secrets = existing_secrets
+    let mut secrets_json: Vec<_> = existing_secrets
         .iter()
         .map(|s| JsonString(s.clone()))
         .collect();
     let test_patch = PatchOperation::Test(TestOperation {
         path: path.clone(),
-        value: JsonArray(expected_secrets),
+        value: JsonArray(secrets_json.clone()),
     });
 
-    let value = JsonString(id.to_string());
+    secrets_json.push(JsonString(id.to_string()));
     let add_patch = PatchOperation::Add(AddOperation {
         path,
-        value: JsonArray(vec![value]),
+        value: JsonArray(secrets_json),
     });
 
     let json_patch = json_patch::Patch(vec![test_patch, add_patch]);
