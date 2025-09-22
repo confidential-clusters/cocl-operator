@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+// SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+//
+// SPDX-License-Identifier: MIT
+
 use chrono::{DateTime, Utc};
 use compute_pcrs_lib::Pcr;
 use serde::{Deserialize, Serialize};

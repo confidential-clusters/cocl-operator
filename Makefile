@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
 
 .PHONY: all build tools manifests-dir manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 

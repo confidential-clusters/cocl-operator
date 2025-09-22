@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+// SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+//
+// SPDX-License-Identifier: MIT
+
 use anyhow::Result;
 use clap::Parser;
 use crds::{ConfidentialCluster, ConfidentialClusterSpec, Trustee};

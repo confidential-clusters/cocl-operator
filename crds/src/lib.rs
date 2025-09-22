@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+// SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+//
+// SPDX-License-Identifier: MIT
+
 use kube_derive::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
