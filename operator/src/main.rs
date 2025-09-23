@@ -21,6 +21,8 @@ use kube::{
 use log::{error, info, warn};
 
 use crds::ConfidentialCluster;
+#[cfg(test)]
+mod mock_client;
 mod reference_values;
 mod register_server;
 mod trustee;
