@@ -421,7 +421,323 @@ pub async fn generate_kbs(
     let create = kbs_configs
         .create(&PostParams::default(), &kbs_config)
         .await;
-    info_if_exists!(create, "KbsConfig", trustee.kbs_config_name);
+    info_if_exists!(create, "KbsConfig", &trustee.kbs_config_name);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use compute_pcrs_lib::Pcr;
+    use http::{Method, Request, Response, StatusCode};
+    use kube::client::Body;
+    use kube::error::ErrorResponse;
+    use rv_store::{ImagePcr, ImagePcrs};
+    use std::collections::BTreeMap;
+    use std::convert::Infallible;
+    use std::sync::{Arc, Mutex};
+    use tower::service_fn;
+
+    /// A helper struct to ensure temporary files are cleaned up after a test.
+    /// It deletes the specified files when it goes out of scope.
+    struct FileCleanup {
+        paths: Vec<String>,
+    }
+
+    impl Drop for FileCleanup {
+        fn drop(&mut self) {
+            for path in &self.paths {
+                // .ok() ignores errors if the file doesn't exist, preventing panics in cleanup.
+                std::fs::remove_file(path).ok();
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct CapturingMockClient {
+        requests: Arc<Mutex<Vec<Request<Body>>>>,
+        response_queue: Arc<Mutex<Vec<Response<Body>>>>,
+    }
+
+    impl CapturingMockClient {
+        fn new(responses: Vec<Response<Body>>) -> Self {
+            Self {
+                requests: Arc::new(Mutex::new(vec![])),
+                response_queue: Arc::new(Mutex::new(responses.into_iter().rev().collect())),
+            }
+        }
+
+        fn into_client(self, namespace: &str) -> Client {
+            let svc = service_fn(move |req: Request<Body>| {
+                self.requests.lock().unwrap().push(req);
+                let response = self
+                    .response_queue
+                    .lock()
+                    .unwrap()
+                    .pop()
+                    .unwrap_or_else(|| {
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Body::from(
+                                "Mock client ran out of responses".to_string().into_bytes(),
+                            ))
+                            .unwrap()
+                    });
+                async move { Ok::<_, Infallible>(response) }
+            });
+            Client::new(svc, namespace)
+        }
+    }
+
+    fn ok_response<T: Serialize>(body: &T) -> Response<Body> {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from(
+                serde_json::to_string(body).unwrap().into_bytes(),
+            ))
+            .unwrap()
+    }
+
+    fn created_response<T: Serialize>(body: &T) -> Response<Body> {
+        Response::builder()
+            .status(StatusCode::CREATED)
+            .body(Body::from(
+                serde_json::to_string(body).unwrap().into_bytes(),
+            ))
+            .unwrap()
+    }
+
+    fn error_response(status_code: StatusCode, reason: &str, message: &str) -> Response<Body> {
+        let error = ErrorResponse {
+            status: "Failure".to_string(),
+            message: message.to_string(),
+            reason: reason.to_string(),
+            code: status_code.as_u16(),
+        };
+        Response::builder()
+            .status(status_code)
+            .body(Body::from(
+                serde_json::to_string(&error).unwrap().into_bytes(),
+            ))
+            .unwrap()
+    }
+
+    fn empty_kbs_config(name: &str) -> KbsConfig {
+        KbsConfig::new(
+            name,
+            KbsConfigSpec {
+                kbs_config_map_name: String::new(),
+                kbs_auth_secret_name: String::new(),
+                kbs_deployment_type: String::new(),
+                kbs_rvps_ref_values_config_map_name: String::new(),
+                kbs_secret_resources: vec![],
+                kbs_https_key_secret_name: String::new(),
+                kbs_https_cert_secret_name: String::new(),
+                kbs_resource_policy_config_map_name: String::new(),
+                kbs_attestation_policy_config_map_name: String::new(),
+            },
+        )
+    }
+
+    #[test]
+    fn test_get_image_pcrs_success() {
+        let mut data = BTreeMap::new();
+        let image_pcrs = ImagePcrs(BTreeMap::from([(
+            "cos".to_string(),
+            ImagePcr {
+                first_seen: "2023-01-01T00:00:00Z".parse().unwrap(),
+                pcrs: vec![Pcr {
+                    id: 0,
+                    value: "pcr0_val".to_string(),
+                    parts: vec![],
+                }],
+            },
+        )]));
+        let pcrs_json = serde_json::to_string(&image_pcrs).unwrap();
+        data.insert(PCR_CONFIG_FILE.to_string(), pcrs_json);
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+
+        let result = get_image_pcrs(config_map);
+        assert!(result.is_ok());
+        let pcrs = result.unwrap();
+        assert_eq!(pcrs.0.get("cos").unwrap().pcrs[0].value, "pcr0_val");
+    }
+
+    #[test]
+    fn test_get_image_pcrs_no_data() {
+        let config_map = ConfigMap::default();
+        let result = get_image_pcrs(config_map);
+        assert!(result.is_err());
+        match result {
+            Ok(_) => panic!("Expected error, got Ok"),
+            Err(e) => assert!(
+                e.to_string()
+                    .contains("Image PCRs map existed, but had no data")
+            ),
+        }
+    }
+
+    #[test]
+    fn test_get_image_pcrs_invalid_json() {
+        let mut data = BTreeMap::new();
+        data.insert(PCR_CONFIG_FILE.to_string(), "this is not json".to_string());
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+        let result = get_image_pcrs(config_map);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generate_luks_key_returns_correct_size() {
+        let result = generate_luks_key().unwrap();
+        let jwk: serde_json::Value = serde_json::from_slice(&result).unwrap();
+        let key = jwk.get("key").and_then(|v| v.as_str()).unwrap();
+        assert_eq!(key.len(), 32);
+    }
+
+    #[tokio::test]
+    async fn test_create_resource_idempotency() {
+        let created_cm = ConfigMap::default();
+        let mock_client = CapturingMockClient::new(vec![
+            created_response(&created_cm),
+            error_response(
+                StatusCode::CONFLICT,
+                "AlreadyExists",
+                "configmap already exists",
+            ),
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerTimeout",
+                "internal server error",
+            ),
+        ]);
+        let client = mock_client.clone().into_client("test-ns");
+
+        let result1 =
+            create_reference_value_config_map(client.clone(), "test-ns", "test-rv-map").await;
+        assert!(result1.is_ok());
+
+        let result2 =
+            create_reference_value_config_map(client.clone(), "test-ns", "test-rv-map").await;
+        assert!(result2.is_ok());
+
+        let result3 =
+            create_reference_value_config_map(client.clone(), "test-ns", "test-rv-map").await;
+        assert!(result3.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_auth_public_key_success() {
+        // Ensure files are cleaned up even if the test panics.
+        let _cleanup = FileCleanup {
+            paths: vec!["privateKey".to_string(), "publicKey".to_string()],
+        };
+
+        let mock_client = CapturingMockClient::new(vec![created_response(&Secret::default())]);
+        let client = mock_client.clone().into_client("test-ns");
+
+        let result = generate_kbs_auth_public_key(client, "test-ns", "test-auth-key-secret").await;
+        assert!(result.is_ok());
+
+        let requests = mock_client.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        let req = &requests[0];
+        assert_eq!(req.method(), Method::POST);
+        assert_eq!(req.uri().path(), "/api/v1/namespaces/test-ns/secrets");
+    }
+
+    #[tokio::test]
+    async fn test_recompute_reference_values_flow() {
+        let pcr_cm = ConfigMap {
+            data: Some(BTreeMap::from([(
+                PCR_CONFIG_FILE.to_string(),
+                serde_json::to_string(&ImagePcrs(BTreeMap::from([(
+                    "cos".to_string(),
+                    ImagePcr {
+                        first_seen: Utc::now(),
+                        pcrs: vec![Pcr {
+                            id: 0,
+                            value: "pcr0_val".to_string(),
+                            parts: vec![],
+                        }],
+                    },
+                )])))
+                .unwrap(),
+            )])),
+            ..Default::default()
+        };
+        let rv_cm = ConfigMap::default();
+
+        let mock_client = CapturingMockClient::new(vec![
+            ok_response(&pcr_cm),
+            ok_response(&rv_cm),
+            ok_response(&rv_cm),
+        ]);
+        let client = mock_client.clone().into_client("op-ns");
+
+        let ctx = RvContextData {
+            client,
+            operator_namespace: "op-ns".to_string(),
+            trustee_namespace: "trustee-ns".to_string(),
+            pcrs_compute_image: "".to_string(),
+            rv_map: "test-rv-map".to_string(),
+        };
+
+        let result = recompute_reference_values(ctx).await;
+        assert!(result.is_ok());
+
+        let requests = mock_client.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].method(), Method::GET);
+        assert!(requests[0].uri().path().contains(PCR_CONFIG_MAP));
+        assert_eq!(requests[1].method(), Method::GET);
+        assert!(requests[1].uri().path().contains("test-rv-map"));
+        assert_eq!(requests[2].method(), Method::PUT);
+        assert!(requests[2].uri().path().contains("test-rv-map"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_flow_with_patch() {
+        let kbs_config_before_patch = empty_kbs_config("test-kbs-config");
+        let mock_client = CapturingMockClient::new(vec![
+            created_response(&Secret::default()),
+            ok_response(&kbs_config_before_patch),
+            ok_response(&empty_kbs_config("test-kbs-config")),
+        ]);
+        let client = mock_client.clone().into_client("test-ns");
+
+        let result = generate_secret(client, "test-ns", "test-kbs-config", "new-secret-id").await;
+        assert!(result.is_ok());
+
+        let requests = mock_client.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].method(), Method::POST);
+        assert_eq!(requests[1].method(), Method::GET);
+        assert_eq!(requests[2].method(), Method::PATCH);
+        assert!(requests[2].uri().path().contains("test-kbs-config"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_already_present_in_spec() {
+        let mut kbs_config_with_secret = empty_kbs_config("test-kbs-config");
+        kbs_config_with_secret.spec.kbs_secret_resources = vec!["existing-secret".to_string()];
+
+        let mock_client = CapturingMockClient::new(vec![
+            created_response(&Secret::default()),
+            ok_response(&kbs_config_with_secret),
+        ]);
+        let client = mock_client.clone().into_client("test-ns");
+
+        let result = generate_secret(client, "test-ns", "test-kbs-config", "existing-secret").await;
+        assert!(result.is_ok());
+
+        let requests = mock_client.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+    }
 }
