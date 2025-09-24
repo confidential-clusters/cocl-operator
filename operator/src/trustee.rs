@@ -1,8 +1,3 @@
-// SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
-// SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
-//
-// SPDX-License-Identifier: MIT
-
 use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
@@ -12,7 +7,7 @@ use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
 use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use std::{collections::BTreeMap, fs};
 
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
@@ -32,7 +27,7 @@ pub struct RvContextData {
 }
 
 /// Sync with clevis-pin-trustee::Key
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ClevisKey {
     key_type: String,
     key: String,
@@ -123,10 +118,12 @@ pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> 
     let secrets: Api<Secret> = Api::namespaced(client, namespace);
     for (name, key) in [(HTTPS_KEY, "https.key"), (HTTPS_CERT, "https.crt")] {
         // Dummy secret, TODO actual authentication (#2)
-        let map = BTreeMap::from([(
-            key.to_string(),
-            k8s_openapi::ByteString("Zm9vYmFyCg==".into()),
-        )]);
+        let map = BTreeMap::from([
+            (
+                key.to_string(),
+                k8s_openapi::ByteString("Zm9vYmFyCg==".into()),
+            ),
+        ]);
         let secret = Secret {
             metadata: kube::api::ObjectMeta {
                 name: Some(name.to_string()),
@@ -151,21 +148,30 @@ pub async fn generate_kbs_configurations(
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
 
     let kbs_config = include_str!("kbs-config.toml");
-    let data = BTreeMap::from([("kbs-config.toml".to_string(), kbs_config.to_string())]);
-    let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(trustee.kbs_configuration.to_string()),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(data),
-        ..Default::default()
-    };
+    let as_config = include_str!("as-config.json");
+    let rvps_config = include_str!("rvps-config.json");
 
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
-    info_if_exists!(create, "ConfigMap", &trustee.kbs_configuration);
+    for (filename, content, configmap) in [
+        ("kbs-config.toml", kbs_config, &trustee.kbs_configuration),
+        ("as-config.json", as_config, &trustee.as_configuration),
+        ("rvps-config.json", rvps_config, &trustee.rvps_configuration),
+    ] {
+        let data = BTreeMap::from([(filename.to_string(), content.to_string())]);
+        let config_map = ConfigMap {
+            metadata: kube::api::ObjectMeta {
+                name: Some(configmap.to_string()),
+                namespace: Some(namespace.to_string()),
+                ..Default::default()
+            },
+            data: Some(data),
+            ..Default::default()
+        };
+
+        let create = config_maps
+            .create(&PostParams::default(), &config_map)
+            .await;
+        info_if_exists!(create, "ConfigMap", configmap);
+    }
 
     Ok(())
 }
@@ -176,10 +182,12 @@ pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()
     let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
     let image_pcrs = get_image_pcrs(image_pcrs_map)?;
     // TODO many grub+shim:many OS image recompute once supported
-    let mut reference_values_in = BTreeMap::from([(
-        "svn".to_string(),
-        vec![serde_json::Value::String("1".to_string())],
-    )]);
+    let mut reference_values_in = BTreeMap::from([
+        (
+            "svn".to_string(),
+            vec![serde_json::Value::String("1".to_string())],
+        ),
+    ]);
     for pcr in image_pcrs.0.values().flat_map(|v| &v.pcrs) {
         reference_values_in
             .entry(format!("pcr{}", pcr.id))
@@ -190,16 +198,18 @@ pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()
         .iter()
         .map(|(name, values)| ReferenceValue {
             version: "0.1.0".to_string(),
-            name: format!("tpm_{name}"),
+            name: format!("tpm_{}", name),
             expiration: Utc::now() + TimeDelta::days(365),
             value: serde_json::Value::Array(values.to_vec()),
         })
         .collect();
     let reference_values_json = serde_json::to_string(&reference_values)?;
-    let data = BTreeMap::from([(
-        REFERENCE_VALUES_FILE.to_string(),
-        reference_values_json.to_string(),
-    )]);
+    let data = BTreeMap::from([
+        (
+            REFERENCE_VALUES_FILE.to_string(),
+            reference_values_json.to_string(),
+        ),
+    ]);
 
     let trustee_config_maps: Api<ConfigMap> = Api::namespaced(ctx.client, &ctx.trustee_namespace);
     let mut rvs = trustee_config_maps.get(&ctx.rv_map).await?;
@@ -215,7 +225,9 @@ pub async fn create_reference_value_config_map(
     namespace: &str,
     name: &str,
 ) -> anyhow::Result<()> {
-    let empty_data = BTreeMap::from([(REFERENCE_VALUES_FILE.to_string(), "{}".to_string())]);
+    let empty_data = BTreeMap::from([
+        (REFERENCE_VALUES_FILE.to_string(), "{}".to_string()),
+    ]);
     let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
     let config_map = ConfigMap {
         metadata: ObjectMeta {
@@ -278,7 +290,7 @@ pub async fn generate_secret(
         .spec
         .kbs_secret_resources;
     if existing_secrets.iter().any(|s| s == id) {
-        info!("Secret with ID {id} already present");
+        info!("Secret with ID {} already present", id);
         return Ok(());
     }
 
@@ -303,7 +315,7 @@ pub async fn generate_secret(
     let params = PatchParams::default();
 
     kbs_configs.patch(kbs_config_name, &params, &patch).await?;
-    info!("Added secret {id} to {kbs_config_name}");
+    info!("Added secret {} to {}", id, kbs_config_name);
 
     Ok(())
 }
@@ -342,13 +354,8 @@ pub async fn generate_attestation_policy(
     name: &str,
 ) -> anyhow::Result<()> {
     let policy_rego = include_str!("tpm.rego");
-    let data = BTreeMap::from([
-        ("default_cpu.rego".to_string(), policy_rego.to_string()),
-        // TODO may be able to remove after resolution of
-        // https://github.com/confidential-containers/trustee-operator/issues/100
-        // (see also #issuecomment-3299368068)
-        ("default_gpu.rego".to_string(), String::new()),
-    ]);
+    let mut data = BTreeMap::new();
+    data.insert("default_cpu.rego".to_string(), policy_rego.to_string());
 
     let config_map = ConfigMap {
         metadata: kube::api::ObjectMeta {
@@ -406,8 +413,10 @@ pub async fn generate_kbs(
         },
         spec: KbsConfigSpec {
             kbs_config_map_name: trustee.kbs_configuration.clone(),
+            kbs_as_config_map_name: trustee.as_configuration.clone(),
+            kbs_rvps_config_map_name: trustee.rvps_configuration.clone(),
             kbs_auth_secret_name: trustee.kbs_auth_key.clone(),
-            kbs_deployment_type: "AllInOneDeployment".to_string(),
+            kbs_deployment_type: "MicroservicesDeployment".to_string(),
             kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
             kbs_secret_resources: vec![],
             kbs_https_key_secret_name: HTTPS_KEY.to_string(),
@@ -424,4 +433,431 @@ pub async fn generate_kbs(
     info_if_exists!(create, "KbsConfig", trustee.kbs_config_name);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    // Import necessary items from external crates and parent modules
+    use super::*;
+    use compute_pcrs_lib::Pcr;
+    use http::{Method, Request, Response, StatusCode};
+    use kube::api::ObjectMeta;
+    use kube::client::Body;
+    use kube::error::ErrorResponse;
+    use rv_store::{ImagePcr, ImagePcrs};
+    use std::collections::BTreeMap;
+    use std::convert::Infallible;
+    use tower::service_fn;
+
+    // -----------------------------------------------------------------
+    // Core helper functions for mocking the K8s API Server
+    // -----------------------------------------------------------------
+
+    /// A helper function to create a mock `kube::Client`.
+    /// It accepts a preset HTTP status code and response body, and returns a client
+    /// that always responds with this content. This is the cornerstone of our
+    /// K8s API Server simulation.
+    fn mock_client<T>(code: StatusCode, body: T, namespace: &str) -> Client
+    where
+        T: Into<Body> + Clone + Send + 'static,
+    {
+        // `tower::service_fn` creates a lightweight service that takes a closure.
+        // This closure is executed on every API call.
+        let mock_svc = service_fn(move |_req: Request<Body>| {
+            // We ignore the request content and always return the preset response.
+            // body.clone() is used to allow the closure to be FnMut
+            let response = Response::builder()
+                .status(code)
+                .body(body.clone().into())
+                .unwrap();
+            // An async block that returns a future
+            async move { Ok::<_, Infallible>(response) }
+        });
+
+        // Create a fake Client with our mock service
+        Client::new(mock_svc, namespace)
+    }
+
+    // -----------------------------------------------------------------
+    // Pure Logic Functions
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn test_get_image_pcrs_success() {
+        // Prepare input data: a valid ConfigMap
+        let mut data = BTreeMap::new();
+        let image_pcrs = ImagePcrs(BTreeMap::from([
+            (
+                "cos".to_string(),
+                ImagePcr {
+                    first_seen: "2023-01-01T00:00:00Z".parse().unwrap(),
+                    pcrs: vec![
+                        Pcr {
+                            id: 0,
+                            value: "pcr0_val".to_string(),
+                            parts: vec![],
+                        },
+                        Pcr {
+                            id: 1,
+                            value: "pcr1_val".to_string(),
+                            parts: vec![],
+                        },
+                    ],
+                },
+            ),
+        ]));
+        let pcrs_json = serde_json::to_string(&image_pcrs).unwrap();
+        data.insert(PCR_CONFIG_FILE.to_string(), pcrs_json);
+
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+
+        let result = get_image_pcrs(config_map);
+
+        assert!(result.is_ok(), "get_image_pcrs failed: {:?}", result.err());
+        let image_pcrs = result.unwrap();
+        assert_eq!(image_pcrs.0["cos"].pcrs.len(), 2);
+        assert_eq!(image_pcrs.0["cos"].pcrs[0].value, "pcr0_val");
+    }
+
+    #[test]
+    fn test_get_image_pcrs_no_data() {
+        let config_map = ConfigMap::default();
+
+        let result = get_image_pcrs(config_map);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_image_pcrs_invalid_json() {
+        // Prepare a ConfigMap with invalid JSON
+        let mut data = BTreeMap::new();
+        data.insert(PCR_CONFIG_FILE.to_string(), "this is not json".to_string());
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+
+        let result = get_image_pcrs(config_map);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generate_luks_key_returns_correct_size() {
+        let result = generate_luks_key();
+        assert!(result.is_ok());
+        let jwk: ClevisKey = serde_json::from_slice(&result.unwrap()).unwrap();
+        assert_eq!(jwk.key.len(), 32);
+    }
+
+    // -----------------------------------------------------------------
+    // Functions Interacting with the Kubernetes API
+    // -----------------------------------------------------------------
+
+    // --- Tests for `create_reference_value_config_map` ---
+    #[tokio::test]
+    async fn test_create_rv_config_map_success() {
+        // Prepare mock response: K8s API usually returns 200 OK with the created object on success.
+        let created_cm_json = serde_json::to_string(&ConfigMap::default()).unwrap();
+
+        // Create the mock client
+        let client = mock_client(StatusCode::OK, created_cm_json.into_bytes(), "test-ns");
+
+        // Call the function under test
+        let result = create_reference_value_config_map(client, "test-ns", "test-rv-map").await;
+
+        // Assert the result: We expect the function to complete successfully without any errors.
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    // Test that `info_if_exists!` treats the addition of already existing constructs as non-fatal
+    // once, using `create_reference_value_config_map`
+    async fn test_create_rv_config_map_already_exists() {
+        // Prepare the JSON body for a K8s API error response
+        let error_response = ErrorResponse {
+            status: "Failure".to_string(),
+            message: "configmaps \"test-rv-map\" already exists".to_string(),
+            reason: "AlreadyExists".to_string(),
+            code: 409,
+        };
+        let error_body = serde_json::to_string(&error_response).unwrap();
+
+        // Create a mock client that returns 409 Conflict
+        let client = mock_client(StatusCode::CONFLICT, error_body.into_bytes(), "test-ns");
+
+        // Call the function under test
+        let result = create_reference_value_config_map(client, "test-ns", "test-rv-map").await;
+
+        // Assert the result: Because the `info_if_exists!` macro catches the 409 error
+        // and treats it as non-fatal, we expect the function to still return Ok(()).
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_rv_config_map_generic_error() {
+        // Prepare a response body for a 500 error
+        let error_response = ErrorResponse {
+            status: "Failure".to_string(),
+            message: "internal server error".to_string(),
+            reason: "ServerTimeout".to_string(),
+            code: 500,
+        };
+        let error_body = serde_json::to_string(&error_response).unwrap();
+
+        // Create a mock client that returns 500 Internal Server Error
+        let client = mock_client(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            error_body.into_bytes(),
+            "test-ns",
+        );
+
+        // Call the function under test
+        let result = create_reference_value_config_map(client, "test-ns", "test-rv-map").await;
+
+        // Assert the result: This time, we expect the function to return an error.
+        assert!(result.is_err());
+    }
+
+    // --- Tests for other simple creation functions ---
+    #[tokio::test]
+    async fn test_generate_resource_policy_success() {
+        let created_cm_json = serde_json::to_string(&ConfigMap::default()).unwrap();
+        let client = mock_client(StatusCode::OK, created_cm_json.into_bytes(), "test-ns");
+
+        let result = generate_resource_policy(client, "test-ns", "test-policy").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_https_certificate_success() {
+        // This function creates two secrets. The mock client will be called twice.
+        // Since our simple mock is stateless, it will return the same success response both times.
+        let created_secret_json = serde_json::to_string(&Secret::default()).unwrap();
+        let client = mock_client(StatusCode::OK, created_secret_json.into_bytes(), "test-ns");
+
+        let result = generate_kbs_https_certificate(client, "test-ns").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_configurations_success() {
+        // This function creates three configmaps in a loop. The mock client will be called three times.
+        // Since our simple mock is stateless, it will return the same success response each time.
+        let created_cm_json = serde_json::to_string(&ConfigMap::default()).unwrap();
+        let client = mock_client(StatusCode::OK, created_cm_json.into_bytes(), "test-ns");
+        let trustee = Trustee::default(); // We need a dummy Trustee object
+
+        let result = generate_kbs_configurations(client, "test-ns", &trustee).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_attestation_policy_success() {
+        let created_cm_json = serde_json::to_string(&ConfigMap::default()).unwrap();
+        let client = mock_client(StatusCode::OK, created_cm_json.into_bytes(), "test-ns");
+
+        let result =
+            generate_attestation_policy(client, "test-ns", "test-attestation-policy").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_success() {
+        let created_kbs_config_json =
+            serde_json::to_string(&KbsConfig::new("test-kbs-config", KbsConfigSpec::default()))
+                .unwrap();
+        let client = mock_client(
+            StatusCode::OK,
+            created_kbs_config_json.into_bytes(),
+            "test-ns",
+        );
+        let trustee = Trustee {
+            kbs_config_name: "test-kbs-config".to_string(),
+            ..Default::default()
+        };
+
+        let result = generate_kbs(client, "test-ns", &trustee).await;
+        assert!(result.is_ok());
+    }
+
+    // --- Test for `recompute_reference_values` ---
+    /// A smarter Mock Client that can return different responses based on the request URL and method.
+    async fn mock_get_then_replace_client(namespace: &str) -> Client {
+        let mock_svc = service_fn(move |req: Request<Body>| async move {
+            let response =
+                if req.method() == Method::GET && req.uri().path().contains(PCR_CONFIG_MAP) {
+                    // This is the GET request for the PCR ConfigMap
+                    let image_pcrs = ImagePcrs(BTreeMap::from([
+                        (
+                            "cos".to_string(),
+                            ImagePcr {
+                                first_seen: "2023-01-01T00:00:00Z".parse().unwrap(),
+                                pcrs: vec![Pcr {
+                                    id: 0,
+                                    value: "pcr0_val".to_string(),
+                                    parts: vec![],
+                                }],
+                            },
+                        ),
+                    ]));
+                    let pcrs_json = serde_json::to_string(&image_pcrs).unwrap();
+                    let mut data = BTreeMap::new();
+                    data.insert(PCR_CONFIG_FILE.to_string(), pcrs_json);
+                    let cm = ConfigMap {
+                        // This is the GET request for the PCR ConfigMap
+                        data: Some(data),
+                        ..Default::default()
+                    };
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Body::from(serde_json::to_string(&cm).unwrap().into_bytes()))
+                        .unwrap()
+                } else {
+                    let cm = ConfigMap::default();
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Body::from(serde_json::to_string(&cm).unwrap().into_bytes()))
+                        .unwrap()
+                };
+            Ok::<_, Infallible>(response)
+        });
+
+        Client::new(mock_svc, namespace)
+    }
+
+    #[tokio::test]
+    async fn test_recompute_reference_values_flow() {
+        // Prepare context data and the smart mock client
+        let ctx = RvContextData {
+            client: mock_get_then_replace_client("op-ns").await,
+            operator_namespace: "op-ns".to_string(),
+            trustee_namespace: "trustee-ns".to_string(),
+            pcrs_compute_image: "".to_string(),
+            rv_map: "test-rv-map".to_string(),
+        };
+
+        // Call the function under test
+        let result = recompute_reference_values(ctx).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    // --- Tests for `generate_secret` ---
+    // This is a more complex test because it involves creating a Secret, getting a KbsConfig, and patching a KbsConfig.
+    async fn mock_generate_secret_client() -> Client {
+        let mock_svc = service_fn(|req: Request<Body>| async move {
+            let response = if req.method() == Method::POST && req.uri().path().contains("/secrets")
+            {
+                // The initial `create` call for the new Secret
+                let secret = Secret::default();
+                Response::builder()
+                    .status(StatusCode::CREATED)
+                    .body(Body::from(
+                        serde_json::to_string(&secret).unwrap().into_bytes(),
+                    ))
+                    .unwrap()
+            } else if req.method() == Method::GET && req.uri().path().contains("/kbsconfigs/") {
+                // The `get` call for the KbsConfig to check existing secrets
+                let kbs_config = KbsConfig {
+                    spec: KbsConfigSpec {
+                        // Start with an empty list of secrets
+                        kbs_secret_resources: vec![],
+                        ..Default::default()
+                    },
+                    metadata: ObjectMeta::default(),
+                };
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from(
+                        serde_json::to_string(&kbs_config).unwrap().into_bytes(),
+                    ))
+                    .unwrap()
+            } else if req.method() == Method::PATCH && req.uri().path().contains("/kbsconfigs/") {
+                // The `patch` call to add the new secret to the KbsConfig
+                let kbs_config = KbsConfig::new("test-kbs-config", KbsConfigSpec::default());
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from(
+                        serde_json::to_string(&kbs_config).unwrap().into_bytes(),
+                    ))
+                    .unwrap()
+            } else {
+                // For any other request, return an error
+                Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::from(
+                        format!("Unexpected request: {} {}", req.method(), req.uri().path())
+                            .into_bytes(),
+                    ))
+                    .unwrap()
+            };
+            Ok::<_, Infallible>(response)
+        });
+        Client::new(mock_svc, "default")
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_flow_success() {
+        // Get the specialized mock client
+        let client = mock_generate_secret_client().await;
+
+        // Call the function under test
+        let result = generate_secret(client, "test-ns", "test-kbs-config", "new-secret-id").await;
+
+        // Assert success
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_already_present_in_spec() {
+        // Test the case where the secret ID is already in the KbsConfig spec
+        let mock_svc = service_fn(|req: Request<Body>| async move {
+            let response = if req.method() == Method::POST && req.uri().path().contains("/secrets")
+            {
+                // The create secret call still happens
+                let secret = Secret::default();
+                Response::builder()
+                    .status(StatusCode::CREATED)
+                    .body(Body::from(
+                        serde_json::to_string(&secret).unwrap().into_bytes(),
+                    ))
+                    .unwrap()
+            } else if req.method() == Method::GET && req.uri().path().contains("/kbsconfigs/") {
+                // The GET call returns a KbsConfig that *already contains* the secret
+                let kbs_config = KbsConfig {
+                    spec: KbsConfigSpec {
+                        kbs_secret_resources: vec!["existing-secret".to_string()],
+                        ..Default::default()
+                    },
+                    metadata: ObjectMeta::default(),
+                };
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from(
+                        serde_json::to_string(&kbs_config).unwrap().into_bytes(),
+                    ))
+                    .unwrap()
+            } else {
+                // The PATCH call should NOT happen. If it does, this will fail.
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from(
+                        "PATCH should not have been called".as_bytes().to_vec(),
+                    ))
+                    .unwrap()
+            };
+            Ok::<_, Infallible>(response)
+        });
+        let client = Client::new(mock_svc, "default");
+
+        // Call with an ID that the mock says is already present
+        let result = generate_secret(client, "test-ns", "test-kbs-config", "existing-secret").await;
+
+        // The function should exit early and succeed without trying to patch.
+        assert!(result.is_ok());
+    }
 }
