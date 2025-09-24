@@ -3,17 +3,26 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
+ARG build_type
 FROM ghcr.io/confidential-clusters/buildroot AS builder
+ARG build_type
 WORKDIR /compute-pcrs
+
 COPY Cargo.toml Cargo.lock .
-COPY compute-pcrs compute-pcrs
 COPY rv-store rv-store
-# Hack: Set required crates as only members to avoid needing to copy other crates.
-# In that case, a rebuild would be triggered upon any change in those crates.
+COPY compute-pcrs/Cargo.toml compute-pcrs/
+COPY compute-pcrs/src/lib.rs compute-pcrs/src/
+
+# Set only required crates as members to minimize rebuilds upon changes.
+# In debug builds, build dependencies to avoid full rebuild.
 RUN sed -i 's/members =.*/members = ["compute-pcrs", "rv-store"]/' Cargo.toml && \
     git clone --depth 1 https://github.com/confidential-clusters/reference-values && \
-    cargo build --release -p compute-pcrs
+    if [ "$build_type" = debug ]; then cargo build -p compute-pcrs --lib; fi
+
+COPY compute-pcrs/src compute-pcrs/src
+RUN cargo build -p compute-pcrs $(if [ "$build_type" = release ]; then echo --release; fi)
 
 FROM quay.io/fedora/fedora:42
-COPY --from=builder /compute-pcrs/target/release/compute-pcrs /usr/local/bin
+ARG build_type
+COPY --from=builder "/compute-pcrs/target/$build_type/compute-pcrs" /usr/bin
 COPY --from=builder /compute-pcrs/reference-values /reference-values
