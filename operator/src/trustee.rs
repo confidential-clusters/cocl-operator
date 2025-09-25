@@ -8,6 +8,7 @@ use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
 use kube::{Api, Client};
 use log::info;
@@ -25,6 +26,7 @@ const REFERENCE_VALUES_FILE: &str = "reference-values.json";
 #[derive(Clone)]
 pub struct RvContextData {
     pub client: Client,
+    pub owner_reference: OwnerReference,
     pub operator_namespace: String,
     pub trustee_namespace: String,
     pub pcrs_compute_image: String,

@@ -6,14 +6,18 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{Api, Client, api::ListParams};
+use kube::{
+    Api, Client, Resource,
+    api::{ListParams, ObjectMeta},
+};
 
 use log::{error, info};
 use thiserror::Error;
@@ -62,9 +66,23 @@ fn error_policy(_obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<Contex
     Action::requeue(Duration::from_secs(60))
 }
 
+fn generate_owner_reference(metadata: &ObjectMeta) -> Result<OwnerReference> {
+    let name = metadata.name.clone();
+    let uid = metadata.uid.clone();
+    Ok(OwnerReference {
+        api_version: ConfidentialCluster::api_version(&()).to_string(),
+        block_owner_deletion: Some(true),
+        controller: Some(true),
+        kind: ConfidentialCluster::kind(&()).to_string(),
+        name: name.context("ConfidentialCluster had no name")?,
+        uid: uid.context("ConfidentialCluster had no UID")?,
+    })
+}
+
 async fn install_trustee_configuration(client: Client, namespace: String) -> Result<()> {
     let cocl = list_confidential_clusters(client.clone(), &namespace).await?;
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
+    let owner_reference = generate_owner_reference(&cocl.metadata)?;
 
     match trustee::generate_kbs_auth_public_key(
         client.clone(),
@@ -101,6 +119,7 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
 
     let rv_ctx = trustee::RvContextData {
         client: client.clone(),
+        owner_reference,
         operator_namespace: namespace.clone(),
         trustee_namespace: trustee_namespace.clone(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image,
