@@ -12,6 +12,8 @@ within the cluster.
 
 -   `/operator`: Contains the source code for the Kubernetes operator itself.
 -   `/crds`: Defines the `ConfidentialCluster` Custom Resource Definition (CRD) in Rust.
+-   `/compute-pcrs`: A program to compute PCR reference values using the [compute-pcrs library](https://github.com/confidential-clusters/compute-pcrs) and insert them into a ConfigMap, run as a Job.
+-   `/rv-store`: Shared reference value definitions.
 -   `/manifest-gen`: A tool for generating all the necessary Kubernetes manifests (Operator Deployment, CRD, RBAC rules, etc.).
 -   `/scripts`: Helper scripts for managing a local `kind` development cluster.
 -   `/manifests`: The default output directory for generated manifests. This directory is not checked into source control.
