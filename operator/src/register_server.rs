@@ -29,7 +29,7 @@ use log::info;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::trustee;
-use operator::{ClevisContextData, ControllerError, controller_error_policy};
+use operator::{ControllerError, controller_error_policy};
 
 const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
 
@@ -250,18 +250,18 @@ pub async fn create_register_server_service(
 
 async fn keygen_reconcile(
     machine: Arc<Machine>,
-    ctx: Arc<ClevisContextData>,
+    client: Arc<Client>,
 ) -> Result<Action, ControllerError> {
     let id = &machine.spec.id;
-    trustee::generate_secret(Arc::<ClevisContextData>::unwrap_or_clone(ctx), id).await?;
+    trustee::generate_secret(Arc::unwrap_or_clone(client), id).await?;
     Ok(Action::await_change())
 }
 
-pub async fn launch_keygen_controller(ctx: ClevisContextData) {
-    let machines: Api<Machine> = Api::default_namespaced(ctx.client.clone());
+pub async fn launch_keygen_controller(client: Client) {
+    let machines: Api<Machine> = Api::default_namespaced(client.clone());
     tokio::spawn(
         Controller::new(machines, watcher::Config::default())
-            .run(keygen_reconcile, controller_error_policy, Arc::new(ctx))
+            .run(keygen_reconcile, controller_error_policy, Arc::new(client))
             .for_each(|res| async move {
                 match res {
                     Ok(o) => info!("reconciled {o:?}"),

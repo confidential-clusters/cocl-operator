@@ -79,67 +79,24 @@ fn generate_owner_reference(metadata: &ObjectMeta) -> Result<OwnerReference> {
 
 async fn install_trustee_configuration(client: Client) -> Result<()> {
     let cocl = list_confidential_clusters(client.clone()).await?;
-    let trustee_namespace = cocl.spec.trustee.namespace.clone();
     let owner_reference = generate_owner_reference(&cocl.metadata)?;
 
-    match trustee::generate_kbs_auth_public_key(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.kbs_auth_key,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate secret authentication key: {}",
-            cocl.spec.trustee.kbs_auth_key
-        ),
-        Err(e) => error!("Failed to create the secret authentication key: {e}"),
-    }
-
-    match trustee::generate_kbs_configurations(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate configmap for the KBS configuration: {}",
-            cocl.spec.trustee.kbs_configuration
-        ),
+    match trustee::generate_trustee_data(client.clone(), owner_reference.clone()).await {
+        Ok(_) => info!("Generate configmap for the KBS configuration",),
         Err(e) => error!("Failed to create the KBS configuration configmap: {e}"),
-    }
-
-    match trustee::generate_kbs_https_certificate(client.clone(), &trustee_namespace).await {
-        Ok(_) => info!("Generated HTTPS certificates for the KBS"),
-        Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
     let rv_ctx = operator::RvContextData {
         client: client.clone(),
-        owner_reference,
-        trustee_namespace: trustee_namespace.clone(),
+        owner_reference: owner_reference.clone(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image,
-        rv_map: cocl.spec.trustee.reference_values.clone(),
     };
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
     match reference_values::create_pcrs_config_map(client.clone()).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
     }
-    match trustee::create_reference_value_config_map(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.reference_values,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Created bare configmap for the reference values: {}",
-            cocl.spec.trustee.reference_values
-        ),
-        Err(e) => error!("Failed to create the reference values configmap: {e}"),
-    }
+
     // TODO machine config input
     match reference_values::handle_new_image(rv_ctx, BOOT_IMAGE).await {
         Ok(_) => info!("Computed or retrieved reference values for image: {BOOT_IMAGE}",),
@@ -148,52 +105,28 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
         }
     }
 
-    match trustee::generate_resource_policy(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.resource_policy,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate configmap for the resource policy: {}",
-            cocl.spec.trustee.resource_policy
-        ),
-        Err(e) => error!("Failed to create the resource policy configmap: {e}"),
-    }
-
-    match trustee::generate_attestation_policy(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.attestation_policy,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate configmap for the attestation policy: {}",
-            cocl.spec.trustee.attestation_policy
-        ),
+    match trustee::generate_attestation_policy(client.clone(), owner_reference.clone()).await {
+        Ok(_) => info!("Generate configmap for the attestation policy",),
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    match trustee::generate_kbs(client.clone(), &trustee_namespace, &cocl.spec.trustee).await {
-        Ok(_) => info!(
-            "Generate the KBS configuration: {}",
-            cocl.spec.trustee.kbs_config_name
-        ),
-        Err(e) => error!("Failed to create the KBS configuration: {e}"),
+    let mut split = cocl.spec.trustee_addr.split(":");
+    // TODO upgrade to 443 once supported
+    let kbs_port: i32 = split.nth(1).and_then(|s| s.parse().ok()).unwrap_or(80);
+    match trustee::generate_kbs_service(client.clone(), owner_reference.clone(), kbs_port).await {
+        Ok(_) => info!("Generate the KBS service"),
+        Err(e) => error!("Failed to create the KBS service: {e}"),
     }
 
-    // Create a dummy secret. If there is no secret created early, trustee-operator does not allow
-    // for updating them later as it changes the KbsConfig structure to include no new keys.
-    let clevis_ctx = operator::ClevisContextData {
-        client,
-        trustee_namespace: cocl.spec.trustee.namespace.clone(),
-        kbs_config: cocl.spec.trustee.kbs_config_name.clone(),
-    };
-    match trustee::generate_secret(clevis_ctx, "dummy").await {
-        Ok(_) => info!("Generate dummy secret"),
-        Err(e) => error!("Failed to create dummy secret: {e}"),
+    match trustee::generate_kbs_deployment(
+        client.clone(),
+        owner_reference.clone(),
+        &cocl.spec.trustee_image,
+    )
+    .await
+    {
+        Ok(_) => info!("Generate the KBS deployment"),
+        Err(e) => error!("Failed to create the KBS deployment: {e}"),
     }
 
     Ok(())
@@ -231,12 +164,7 @@ async fn install_register_server(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create register server service: {e}"),
     }
 
-    let clevis_ctx = operator::ClevisContextData {
-        client,
-        trustee_namespace: cocl.spec.trustee.namespace.clone(),
-        kbs_config: cocl.spec.trustee.kbs_config_name.clone(),
-    };
-    register_server::launch_keygen_controller(clevis_ctx).await;
+    register_server::launch_keygen_controller(client).await;
 
     Ok(())
 }

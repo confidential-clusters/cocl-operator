@@ -166,7 +166,7 @@ async fn job_reconcile(job: Arc<Job>, ctx: Arc<RvContextData>) -> Result<Action,
     // Foreground deletion: Delete the pod too
     let delete = jobs.delete(name, &DeleteParams::foreground()).await;
     delete.map_err(Into::<anyhow::Error>::into)?;
-    trustee::recompute_reference_values(Arc::unwrap_or_clone(ctx)).await?;
+    trustee::update_reference_values(Arc::unwrap_or_clone(ctx)).await?;
     Ok(Action::await_change())
 }
 
@@ -259,7 +259,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
     config_maps
         .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
         .await?;
-    trustee::recompute_reference_values(ctx).await
+    trustee::update_reference_values(ctx).await
 }
 
 #[allow(dead_code)]
@@ -277,5 +277,5 @@ pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> anyhow::Res
     config_maps
         .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
         .await?;
-    trustee::recompute_reference_values(ctx).await
+    trustee::update_reference_values(ctx).await
 }

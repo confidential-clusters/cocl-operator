@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use crds::{ConfidentialCluster, ConfidentialClusterSpec, Machine, Trustee};
+use crds::{ConfidentialCluster, ConfidentialClusterSpec, Machine};
 use k8s_openapi::{
     api::{
         apps::v1::Deployment,
@@ -46,10 +46,11 @@ pub struct Args {
     #[arg(long, default_value = "confidential-clusters")]
     namespace: String,
 
-    /// Trustee namespace where to install trustee configuration
+    /// Container image with all-in-one Trustee
     #[arg(long, default_value = "operators")]
-    trustee_namespace: String,
+    trustee_image: String,
 
+    /// Container image with the cocl compute-pcrs binary
     #[arg(
         long,
         default_value = "quay.io/confidential-clusters/compute-pcrs:latest"
@@ -289,68 +290,12 @@ fn generate_operator(args: &Args) -> Result<()> {
         }]),
     };
 
-    let trustee_role = Role {
-        metadata: ObjectMeta {
-            name: Some("trustee-role".to_string()),
-            namespace: Some(args.trustee_namespace.clone()),
-            ..Default::default()
-        },
-        rules: Some(vec![
-            PolicyRule {
-                api_groups: Some(vec!["".to_string()]),
-                resources: Some(vec!["secrets".to_string(), "configmaps".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                ],
-                ..Default::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["confidentialcontainers.org".to_string()]),
-                resources: Some(vec!["kbsconfigs".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                ],
-                ..Default::default()
-            },
-        ]),
-    };
-
-    let trustee_role_binding = RoleBinding {
-        metadata: ObjectMeta {
-            name: Some("trustee-role-binding".to_string()),
-            namespace: Some(args.trustee_namespace.clone()),
-            ..Default::default()
-        },
-        role_ref: RoleRef {
-            api_group: "rbac.authorization.k8s.io".to_string(),
-            kind: "Role".to_string(),
-            name: "trustee-role".to_string(),
-        },
-        subjects: Some(vec![Subject {
-            kind: "ServiceAccount".to_string(),
-            name: operator_service_account_name.to_string(),
-            namespace: Some(namespace),
-            ..Default::default()
-        }]),
-    };
-
     let operator_service_account_yaml = serde_yaml::to_string(&operator_service_account)?;
     let operator_role_yaml = serde_yaml::to_string(&operator_role)?;
     let operator_role_binding_yaml = serde_yaml::to_string(&operator_role_binding)?;
     let compute_pcrs_service_account_yaml = serde_yaml::to_string(&compute_pcrs_service_account)?;
     let compute_pcrs_role_yaml = serde_yaml::to_string(&compute_pcrs_role)?;
     let compute_pcrs_role_binding_yaml = serde_yaml::to_string(&compute_pcrs_role_binding)?;
-    let trustee_role_yaml = serde_yaml::to_string(&trustee_role)?;
-    let trustee_role_binding_yaml = serde_yaml::to_string(&trustee_role_binding)?;
 
     let combined_yaml = [
         ns_yaml,
@@ -361,8 +306,6 @@ fn generate_operator(args: &Args) -> Result<()> {
         compute_pcrs_service_account_yaml,
         compute_pcrs_role_yaml,
         compute_pcrs_role_binding_yaml,
-        trustee_role_yaml,
-        trustee_role_binding_yaml,
     ]
     .join("\n---\n");
 
@@ -402,15 +345,7 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
             ..Default::default()
         },
         spec: ConfidentialClusterSpec {
-            trustee: Trustee {
-                namespace: args.trustee_namespace.clone(),
-                kbs_configuration: "kbs-config-map".to_string(),
-                attestation_policy: "attestation-policy-data".to_string(),
-                resource_policy: "resource-policy-data".to_string(),
-                reference_values: "reference-values-data".to_string(),
-                kbs_auth_key: "kbs-auth-key".to_string(),
-                kbs_config_name: "kbsconfig".to_string(),
-            },
+            trustee_image: args.trustee_image.clone(),
             pcrs_compute_image: args.pcrs_compute_image.clone(),
             register_server_image: args.register_server_image.clone(),
             trustee_addr: args.trustee_addr.clone(),

@@ -16,16 +16,7 @@ use std::{fmt::Display, sync::Arc, time::Duration};
 pub struct RvContextData {
     pub client: Client,
     pub owner_reference: OwnerReference,
-    pub trustee_namespace: String,
     pub pcrs_compute_image: String,
-    pub rv_map: String,
-}
-
-#[derive(Clone)]
-pub struct ClevisContextData {
-    pub client: Client,
-    pub trustee_namespace: String,
-    pub kbs_config: String,
 }
 
 #[derive(Debug, thiserror::Error)]
