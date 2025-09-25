@@ -8,12 +8,14 @@
 //
 // Use in other crates is not an intended purpose.
 
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::{Client, runtime::controller::Action};
 use std::{fmt::Display, sync::Arc, time::Duration};
 
 #[derive(Clone)]
 pub struct RvContextData {
     pub client: Client,
+    pub owner_reference: OwnerReference,
     pub trustee_namespace: String,
     pub pcrs_compute_image: String,
     pub rv_map: String,

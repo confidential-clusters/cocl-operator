@@ -10,13 +10,13 @@ use anyhow::{Context, Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use kube::{Api, Client, Resource, api::ListParams};
+use kube::runtime::{
+    controller::{Action, Controller},
+    watcher,
+};
 use kube::{
-    api::ObjectMeta,
-    runtime::{
-        controller::{Action, Controller},
-        watcher,
-    },
+    Api, Client, Resource,
+    api::{ListParams, ObjectMeta},
 };
 
 use log::{error, info};
@@ -80,6 +80,7 @@ fn generate_owner_reference(metadata: &ObjectMeta) -> Result<OwnerReference> {
 async fn install_trustee_configuration(client: Client) -> Result<()> {
     let cocl = list_confidential_clusters(client.clone()).await?;
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
+    let owner_reference = generate_owner_reference(&cocl.metadata)?;
 
     match trustee::generate_kbs_auth_public_key(
         client.clone(),
@@ -116,6 +117,7 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
 
     let rv_ctx = operator::RvContextData {
         client: client.clone(),
+        owner_reference,
         trustee_namespace: trustee_namespace.clone(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image,
         rv_map: cocl.spec.trustee.reference_values.clone(),
