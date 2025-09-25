@@ -6,6 +6,7 @@
 use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
+use clevis_pin_trustee_lib::Key as ClevisKey;
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
@@ -13,43 +14,16 @@ use kube::{Api, Client};
 use log::info;
 use openssl::pkey::PKey;
 use serde::{Serialize, Serializer};
+use serde_json::{Value::Array as JsonArray, Value::String as JsonString};
 use std::{collections::BTreeMap, fs};
 
 use crds::{KbsConfig, KbsConfigSpec, Trustee};
+use operator::{ClevisContextData, RvContextData, info_if_exists};
 use rv_store::*;
 
 const HTTPS_KEY: &str = "kbs-https-key";
 const HTTPS_CERT: &str = "kbs-https-certificate";
 const REFERENCE_VALUES_FILE: &str = "reference-values.json";
-
-#[derive(Clone)]
-pub struct RvContextData {
-    pub client: Client,
-    pub operator_namespace: String,
-    pub trustee_namespace: String,
-    pub pcrs_compute_image: String,
-    pub rv_map: String,
-}
-
-/// Sync with clevis-pin-trustee::Key
-#[derive(Serialize)]
-struct ClevisKey {
-    key_type: String,
-    key: String,
-}
-
-macro_rules! info_if_exists {
-    ($result:ident, $resource_type:literal, $resource_name:expr) => {
-        match $result {
-            Ok(_) => info!("Create {} {}", $resource_type, $resource_name),
-            Err(kube::Error::Api(ae)) if ae.code == 409 => {
-                info!("{} {} already exists", $resource_type, $resource_name)
-            }
-            Err(e) => return Err(e.into()),
-        }
-    };
-}
-pub(crate) use info_if_exists;
 
 fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
 where
@@ -128,7 +102,7 @@ pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> 
             k8s_openapi::ByteString("Zm9vYmFyCg==".into()),
         )]);
         let secret = Secret {
-            metadata: kube::api::ObjectMeta {
+            metadata: ObjectMeta {
                 name: Some(name.to_string()),
                 namespace: Some(namespace.to_string()),
                 ..Default::default()
@@ -153,7 +127,7 @@ pub async fn generate_kbs_configurations(
     let kbs_config = include_str!("kbs-config.toml");
     let data = BTreeMap::from([("kbs-config.toml".to_string(), kbs_config.to_string())]);
     let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
+        metadata: ObjectMeta {
             name: Some(trustee.kbs_configuration.to_string()),
             namespace: Some(namespace.to_string()),
             ..Default::default()
@@ -172,19 +146,17 @@ pub async fn generate_kbs_configurations(
 
 pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()> {
     let operator_config_maps: Api<ConfigMap> =
-        Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
+        Api::namespaced(ctx.client.clone(), ctx.client.default_namespace());
     let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
     let image_pcrs = get_image_pcrs(image_pcrs_map)?;
     // TODO many grub+shim:many OS image recompute once supported
-    let mut reference_values_in = BTreeMap::from([(
-        "svn".to_string(),
-        vec![serde_json::Value::String("1".to_string())],
-    )]);
+    let mut reference_values_in =
+        BTreeMap::from([("svn".to_string(), vec![JsonString("1".to_string())])]);
     for pcr in image_pcrs.0.values().flat_map(|v| &v.pcrs) {
         reference_values_in
             .entry(format!("pcr{}", pcr.id))
             .or_default()
-            .push(serde_json::Value::String(pcr.value.clone()));
+            .push(JsonString(pcr.value.clone()));
     }
     let reference_values: Vec<_> = reference_values_in
         .iter()
@@ -192,7 +164,7 @@ pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()
             version: "0.1.0".to_string(),
             name: format!("tpm_{name}"),
             expiration: Utc::now() + TimeDelta::days(365),
-            value: serde_json::Value::Array(values.to_vec()),
+            value: JsonArray(values.to_vec()),
         })
         .collect();
     let reference_values_json = serde_json::to_string(&reference_values)?;
@@ -246,64 +218,59 @@ fn generate_luks_key() -> anyhow::Result<Vec<u8>> {
     serde_json::to_vec(&jwk).map_err(Into::into)
 }
 
-pub async fn generate_secret(
-    client: Client,
-    namespace: &str,
-    kbs_config_name: &str,
-    id: &str,
-) -> anyhow::Result<()> {
+pub async fn generate_secret(ctx: ClevisContextData, id: &str) -> anyhow::Result<()> {
     let key = generate_luks_key()?;
     let secret_data = k8s_openapi::ByteString(key);
     let data = BTreeMap::from([("root".to_string(), secret_data)]);
 
     let secret = Secret {
-        metadata: kube::api::ObjectMeta {
+        metadata: ObjectMeta {
             name: Some(id.to_string()),
-            namespace: Some(namespace.to_string()),
+            namespace: Some(ctx.trustee_namespace.to_string()),
             ..Default::default()
         },
         data: Some(data),
         ..Default::default()
     };
 
-    let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
+    let secrets: Api<Secret> = Api::namespaced(ctx.client.clone(), &ctx.trustee_namespace);
     let create = secrets.create(&PostParams::default(), &secret).await;
     info_if_exists!(create, "Secret", id);
 
-    let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
+    let kbs_configs: Api<KbsConfig> = Api::namespaced(ctx.client, &ctx.trustee_namespace);
 
     let existing_secrets = kbs_configs
-        .get(kbs_config_name)
+        .get(&ctx.kbs_config)
         .await?
         .spec
         .kbs_secret_resources;
-    if existing_secrets.iter().any(|s| s == id) {
+    if existing_secrets.contains(&id.to_string()) {
         info!("Secret with ID {id} already present");
         return Ok(());
     }
 
     let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;
-    let expected_secrets = existing_secrets
+    let mut secrets_json: Vec<_> = existing_secrets
         .iter()
-        .map(|s| serde_json::Value::String(s.clone()))
+        .map(|s| JsonString(s.clone()))
         .collect();
     let test_patch = PatchOperation::Test(TestOperation {
         path: path.clone(),
-        value: serde_json::Value::Array(expected_secrets),
+        value: JsonArray(secrets_json.clone()),
     });
 
-    let value = serde_json::Value::String(id.to_string());
+    secrets_json.push(JsonString(id.to_string()));
     let add_patch = PatchOperation::Add(AddOperation {
         path,
-        value: serde_json::Value::Array(vec![value]),
+        value: JsonArray(secrets_json),
     });
 
     let json_patch = json_patch::Patch(vec![test_patch, add_patch]);
     let patch: Patch<KbsConfig> = Patch::Json(json_patch);
     let params = PatchParams::default();
 
-    kbs_configs.patch(kbs_config_name, &params, &patch).await?;
-    info!("Added secret {id} to {kbs_config_name}");
+    kbs_configs.patch(&ctx.kbs_config, &params, &patch).await?;
+    info!("Added secret {id} to {}", ctx.kbs_config);
 
     Ok(())
 }
@@ -318,7 +285,7 @@ pub async fn generate_resource_policy(
     data.insert("policy.rego".to_string(), policy_rego.to_string());
 
     let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
+        metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(namespace.to_string()),
             ..Default::default()
@@ -351,7 +318,7 @@ pub async fn generate_attestation_policy(
     ]);
 
     let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
+        metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(namespace.to_string()),
             ..Default::default()
@@ -398,7 +365,7 @@ pub async fn generate_kbs(
     ]);
 
     let kbs_config = KbsConfig {
-        metadata: kube::api::ObjectMeta {
+        metadata: ObjectMeta {
             name: Some(trustee.kbs_config_name.clone()),
             namespace: Some(namespace.to_string()),
             labels: Some(labels),

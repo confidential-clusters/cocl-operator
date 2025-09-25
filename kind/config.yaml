@@ -14,5 +14,7 @@ nodes:
   extraPortMappings:
   - containerPort: 31000
     hostPort: 8080
+  - containerPort: 31001
+    hostPort: 3030
 featureGates:
   "ImageVolume": true

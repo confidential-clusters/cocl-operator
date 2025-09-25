@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: register-forward
+  namespace: confidential-clusters
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    nodePort: 31001
+    port: 3030
+  selector:
+    app: register-server
