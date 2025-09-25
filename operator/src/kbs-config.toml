@@ -4,7 +4,6 @@ insecure_http = true
 
 [admin]
 insecure_api = true
-auth_public_key = "/etc/auth-secret/publicKey"
 
 [attestation_token]
 insecure_key = true
@@ -12,12 +11,12 @@ attestation_token_type = "CoCo"
 
 [attestation_service]
 type = "coco_as_builtin"
-work_dir = "/opt/confidential-containers/attestation-service"
+work_dir = "/opt/trustee"
 policy_engine = "opa"
 
   [attestation_service.attestation_token_broker]
   type = "Ear"
-  policy_dir = "/opt/confidential-containers/attestation-service/policies"
+  policy_dir = "/opt/trustee/policies"
 
   [attestation_service.attestation_token_config]
   duration_min = 5
@@ -27,13 +26,13 @@ policy_engine = "opa"
 
     [attestation_service.rvps_config.storage]
     type = "LocalJson"
-    file_path = "/opt/confidential-containers/rvps/reference-values/reference-values.json"
+    file_path = "/opt/trustee/reference-values.json"
 
 
 [[plugins]]
 name = "resource"
 type = "LocalFs"
-dir_path = "/opt/confidential-containers/kbs/repository"
+dir_path = "/opt/trustee/kbs-repository"
 
 [policy_engine]
-policy_path = "/opt/confidential-containers/opa/policy.rego"
+policy_path = "/opt/trustee/policy.rego"

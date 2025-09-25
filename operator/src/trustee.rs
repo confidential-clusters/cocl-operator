@@ -3,34 +3,45 @@
 //
 // SPDX-License-Identifier: MIT
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
 use json_patch::{AddOperation, PatchOperation, TestOperation};
-use k8s_openapi::api::core::v1::{ConfigMap, Secret};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
+use k8s_openapi::api::core::v1::{
+    ConfigMap, ConfigMapVolumeSource, Container, ContainerPort, EmptyDirVolumeSource, PodSpec,
+    PodTemplateSpec, Secret, SecretVolumeSource, Service, ServicePort, ServiceSpec, Volume,
+    VolumeMount,
+};
+use k8s_openapi::apimachinery::pkg::{
+    apis::meta::v1::{LabelSelector, OwnerReference},
+    util::intstr::IntOrString,
+};
 use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
 use kube::{Api, Client};
 use log::info;
-use openssl::pkey::PKey;
 use serde::{Serialize, Serializer};
-use std::{collections::BTreeMap, fs};
+use serde_json::Value::String as JsonString;
+use std::collections::BTreeMap;
 
-use crds::{KbsConfig, KbsConfigSpec, Trustee};
 use rv_store::*;
 
-const HTTPS_KEY: &str = "kbs-https-key";
-const HTTPS_CERT: &str = "kbs-https-certificate";
+const TRUSTEE_DATA_DIR: &str = "/opt/trustee";
+const TRUSTEE_SECRETS_PATH: &str = "/opt/trustee/kbs-repository/conf-cluster";
+const KBS_CONFIG_FILE: &str = "kbs-config.toml";
 const REFERENCE_VALUES_FILE: &str = "reference-values.json";
+
+const TRUSTEE_DATA_MAP: &str = "trustee-data";
+const ATT_POLICY_MAP: &str = "attestation-policy";
+const DEPLOYMENT_NAME: &str = "trustee-deployment";
+const KBS_PORT: i32 = 8080;
 
 #[derive(Clone)]
 pub struct RvContextData {
     pub client: Client,
     pub owner_reference: OwnerReference,
     pub operator_namespace: String,
-    pub trustee_namespace: String,
     pub pcrs_compute_image: String,
-    pub rv_map: String,
 }
 
 /// Sync with clevis-pin-trustee::Key
@@ -53,7 +64,7 @@ macro_rules! info_if_exists {
 }
 pub(crate) use info_if_exists;
 
-fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
+fn primitive_date_time_to_str<S>(d: &DateTime<Utc>, s: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -73,7 +84,7 @@ struct ReferenceValue {
     pub value: serde_json::Value,
 }
 
-pub fn get_image_pcrs(image_pcrs_map: ConfigMap) -> anyhow::Result<ImagePcrs> {
+pub fn get_image_pcrs(image_pcrs_map: ConfigMap) -> Result<ImagePcrs> {
     let image_pcrs_data = image_pcrs_map
         .data
         .context("Image PCRs map existed, but had no data")?;
@@ -83,112 +94,17 @@ pub fn get_image_pcrs(image_pcrs_map: ConfigMap) -> anyhow::Result<ImagePcrs> {
     serde_json::from_str(image_pcrs_str).map_err(Into::into)
 }
 
-pub async fn generate_kbs_auth_public_key(
-    client: Client,
-    namespace: &str,
-    secret_name: &str,
-) -> anyhow::Result<()> {
-    let keypair = PKey::generate_ed25519()?;
-
-    let private_pem = keypair.private_key_to_pem_pkcs8()?;
-    fs::write("privateKey", &private_pem)?;
-
-    let public_key = keypair.public_key_to_pem()?;
-    fs::write("publicKey", &public_key)?;
-
-    let public_key_b64 = general_purpose::STANDARD.encode(&public_key);
-
-    let mut data = BTreeMap::new();
-    data.insert(
-        "publicKey".to_string(),
-        k8s_openapi::ByteString(public_key_b64.into()),
-    );
-
-    let secret = Secret {
-        metadata: kube::api::ObjectMeta {
-            name: Some(secret_name.to_string()),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(data),
-        ..Default::default()
-    };
-
-    let secrets: Api<Secret> = Api::namespaced(client, namespace);
-    let create = secrets.create(&PostParams::default(), &secret).await;
-    info_if_exists!(create, "Secret", secret_name);
-
-    Ok(())
-}
-
-pub async fn generate_kbs_https_certificate(client: Client, namespace: &str) -> anyhow::Result<()> {
-    let secrets: Api<Secret> = Api::namespaced(client, namespace);
-    for (name, key) in [(HTTPS_KEY, "https.key"), (HTTPS_CERT, "https.crt")] {
-        // Dummy secret, TODO actual authentication (#2)
-        let map = BTreeMap::from([(
-            key.to_string(),
-            k8s_openapi::ByteString("Zm9vYmFyCg==".into()),
-        )]);
-        let secret = Secret {
-            metadata: kube::api::ObjectMeta {
-                name: Some(name.to_string()),
-                namespace: Some(namespace.to_string()),
-                ..Default::default()
-            },
-            data: Some(map),
-            ..Default::default()
-        };
-        let create = secrets.create(&PostParams::default(), &secret).await;
-        info_if_exists!(create, "Secret", name);
-    }
-
-    Ok(())
-}
-
-pub async fn generate_kbs_configurations(
-    client: Client,
-    namespace: &str,
-    trustee: &Trustee,
-) -> anyhow::Result<()> {
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-
-    let kbs_config = include_str!("kbs-config.toml");
-    let data = BTreeMap::from([("kbs-config.toml".to_string(), kbs_config.to_string())]);
-    let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(trustee.kbs_configuration.to_string()),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(data),
-        ..Default::default()
-    };
-
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
-    info_if_exists!(create, "ConfigMap", &trustee.kbs_configuration);
-
-    Ok(())
-}
-
-pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()> {
-    let operator_config_maps: Api<ConfigMap> =
-        Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
-    let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
-    let image_pcrs = get_image_pcrs(image_pcrs_map)?;
+fn recompute_reference_values(image_pcrs: ImagePcrs) -> Vec<ReferenceValue> {
     // TODO many grub+shim:many OS image recompute once supported
-    let mut reference_values_in = BTreeMap::from([(
-        "svn".to_string(),
-        vec![serde_json::Value::String("1".to_string())],
-    )]);
+    let mut reference_values_in =
+        BTreeMap::from([("svn".to_string(), vec![JsonString("1".to_string())])]);
     for pcr in image_pcrs.0.values().flat_map(|v| &v.pcrs) {
         reference_values_in
             .entry(format!("pcr{}", pcr.id))
             .or_default()
-            .push(serde_json::Value::String(pcr.value.clone()));
+            .push(JsonString(pcr.value.clone()));
     }
-    let reference_values: Vec<_> = reference_values_in
+    reference_values_in
         .iter()
         .map(|(name, values)| ReferenceValue {
             version: "0.1.0".to_string(),
@@ -196,47 +112,38 @@ pub async fn recompute_reference_values(ctx: RvContextData) -> anyhow::Result<()
             expiration: Utc::now() + TimeDelta::days(365),
             value: serde_json::Value::Array(values.to_vec()),
         })
-        .collect();
-    let reference_values_json = serde_json::to_string(&reference_values)?;
-    let data = BTreeMap::from([(
-        REFERENCE_VALUES_FILE.to_string(),
-        reference_values_json.to_string(),
-    )]);
+        .collect()
+}
 
-    let trustee_config_maps: Api<ConfigMap> = Api::namespaced(ctx.client, &ctx.trustee_namespace);
-    let mut rvs = trustee_config_maps.get(&ctx.rv_map).await?;
-    rvs.data = Some(data);
-    trustee_config_maps
-        .replace(&ctx.rv_map, &PostParams::default(), &rvs)
-        .await?;
+pub async fn update_reference_values(ctx: RvContextData) -> Result<()> {
+    let operator_config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
+    let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
+    let reference_values = recompute_reference_values(get_image_pcrs(image_pcrs_map)?);
+
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client);
+    let existing_data = config_maps.get(TRUSTEE_DATA_MAP).await?;
+    let err = format!("ConfigMap {TRUSTEE_DATA_MAP} existed, but had no data");
+    let existing_data_map = existing_data.data.context(err)?;
+    let err = format!("ConfigMap {TRUSTEE_DATA_MAP} existed, but had no reference values");
+    let existing_rvs = existing_data_map.get(REFERENCE_VALUES_FILE).context(err)?;
+
+    let path = jsonptr::PointerBuf::parse(format!("/data/{REFERENCE_VALUES_FILE}"))?;
+    let test_patch = PatchOperation::Test(TestOperation {
+        path: path.clone(),
+        value: JsonString(existing_rvs.clone()),
+    });
+    let add_patch = PatchOperation::Add(AddOperation {
+        path,
+        value: JsonString(serde_json::to_string(&reference_values)?),
+    });
+    let patch: Patch<ConfigMap> = Patch::Json(json_patch::Patch(vec![test_patch, add_patch]));
+    let params = PatchParams::default();
+    config_maps.patch(TRUSTEE_DATA_MAP, &params, &patch).await?;
+    info!("Recomputed reference values");
     Ok(())
 }
 
-pub async fn create_reference_value_config_map(
-    client: Client,
-    namespace: &str,
-    name: &str,
-) -> anyhow::Result<()> {
-    let empty_data = BTreeMap::from([(REFERENCE_VALUES_FILE.to_string(), "{}".to_string())]);
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    let config_map = ConfigMap {
-        metadata: ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(empty_data),
-        ..Default::default()
-    };
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
-    info_if_exists!(create, "ConfigMap", name);
-
-    Ok(())
-}
-
-fn generate_luks_key() -> anyhow::Result<Vec<u8>> {
+fn generate_luks_key() -> Result<Vec<u8>> {
     // Constraint: 32 bytes b64-encoded, thus 24
     let mut pass = [0; 24];
     openssl::rand::rand_bytes(&mut pass)?;
@@ -248,182 +155,291 @@ fn generate_luks_key() -> anyhow::Result<Vec<u8>> {
     serde_json::to_vec(&jwk).map_err(Into::into)
 }
 
-pub async fn generate_secret(
-    client: Client,
-    namespace: &str,
-    kbs_config_name: &str,
-    id: &str,
-) -> anyhow::Result<()> {
-    let key = generate_luks_key()?;
-    let secret_data = k8s_openapi::ByteString(key);
-    let data = BTreeMap::from([("root".to_string(), secret_data)]);
-
-    let secret = Secret {
-        metadata: kube::api::ObjectMeta {
-            name: Some(id.to_string()),
-            namespace: Some(namespace.to_string()),
+fn generate_secret_volume(id: &str) -> (Volume, VolumeMount) {
+    (
+        Volume {
+            name: id.to_string(),
+            secret: Some(SecretVolumeSource {
+                secret_name: Some(id.to_string()),
+                ..Default::default()
+            }),
             ..Default::default()
         },
-        data: Some(data),
-        ..Default::default()
-    };
+        VolumeMount {
+            name: id.to_string(),
+            mount_path: format!("{TRUSTEE_SECRETS_PATH}/{id}"),
+            ..Default::default()
+        },
+    )
+}
 
-    let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let create = secrets.create(&PostParams::default(), &secret).await;
-    info_if_exists!(create, "Secret", id);
+async fn mount_secret(client: Client, id: &str) -> Result<()> {
+    let deployments: Api<Deployment> = Api::default_namespaced(client);
+    let deployment = deployments.get(DEPLOYMENT_NAME).await?;
+    let err = format!("Deployment {DEPLOYMENT_NAME} existed, but had no spec");
+    let depl_spec = deployment.spec.context(err)?;
+    let err = format!("Deployment {DEPLOYMENT_NAME} existed, but had no pod spec");
+    let existing_pod_spec = depl_spec.template.spec.context(err)?;
 
-    let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
+    let mut new_pod_spec = existing_pod_spec.clone();
+    let (volume, volume_mount) = generate_secret_volume(id);
+    new_pod_spec.volumes.get_or_insert_default().push(volume);
 
-    let existing_secrets = kbs_configs
-        .get(kbs_config_name)
-        .await?
-        .spec
-        .kbs_secret_resources;
-    if existing_secrets.iter().any(|s| s == id) {
-        info!("Secret with ID {id} already present");
-        return Ok(());
-    }
+    let err = format!("Deployment {DEPLOYMENT_NAME} existed, but had no containers");
+    let container = new_pod_spec.containers.get_mut(0).context(err)?;
+    let vol_mounts = container.volume_mounts.get_or_insert_default();
+    vol_mounts.push(volume_mount);
 
-    let path = jsonptr::PointerBuf::parse("/spec/kbsSecretResources")?;
-    let expected_secrets = existing_secrets
-        .iter()
-        .map(|s| serde_json::Value::String(s.clone()))
-        .collect();
+    let path = jsonptr::PointerBuf::parse("/spec/template/spec".to_string())?;
     let test_patch = PatchOperation::Test(TestOperation {
         path: path.clone(),
-        value: serde_json::Value::Array(expected_secrets),
+        value: serde_json::to_value(existing_pod_spec)?,
     });
-
-    let value = serde_json::Value::String(id.to_string());
     let add_patch = PatchOperation::Add(AddOperation {
         path,
-        value: serde_json::Value::Array(vec![value]),
+        value: serde_json::to_value(new_pod_spec)?,
     });
-
-    let json_patch = json_patch::Patch(vec![test_patch, add_patch]);
-    let patch: Patch<KbsConfig> = Patch::Json(json_patch);
+    let patch: Patch<Deployment> = Patch::Json(json_patch::Patch(vec![test_patch, add_patch]));
     let params = PatchParams::default();
+    deployments.patch(DEPLOYMENT_NAME, &params, &patch).await?;
 
-    kbs_configs.patch(kbs_config_name, &params, &patch).await?;
-    info!("Added secret {id} to {kbs_config_name}");
-
+    info!("Mounted secret {id} to {DEPLOYMENT_NAME}");
     Ok(())
 }
 
-pub async fn generate_resource_policy(
-    client: Client,
-    namespace: &str,
-    name: &str,
-) -> anyhow::Result<()> {
-    let policy_rego = include_str!("resource.rego");
-    let mut data = BTreeMap::new();
-    data.insert("policy.rego".to_string(), policy_rego.to_string());
+pub async fn generate_secret(client: Client, id: &str) -> Result<()> {
+    let secret_data = k8s_openapi::ByteString(generate_luks_key()?);
+    let data = BTreeMap::from([("root".to_string(), secret_data)]);
 
-    let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(namespace.to_string()),
+    let secret = Secret {
+        metadata: ObjectMeta {
+            name: Some(id.to_string()),
             ..Default::default()
         },
         data: Some(data),
         ..Default::default()
     };
 
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
-    info_if_exists!(create, "ConfigMap", name);
-
-    Ok(())
+    let secrets: Api<Secret> = Api::default_namespaced(client.clone());
+    let create = secrets.create(&PostParams::default(), &secret).await;
+    info_if_exists!(create, "Secret", id);
+    mount_secret(client, id).await
 }
 
 pub async fn generate_attestation_policy(
     client: Client,
-    namespace: &str,
-    name: &str,
-) -> anyhow::Result<()> {
+    owner_reference: OwnerReference,
+) -> Result<()> {
     let policy_rego = include_str!("tpm.rego");
     let data = BTreeMap::from([
         ("default_cpu.rego".to_string(), policy_rego.to_string()),
-        // TODO may be able to remove after resolution of
-        // https://github.com/confidential-containers/trustee-operator/issues/100
-        // (see also #issuecomment-3299368068)
+        // Must create GPU policy or Trustee will attempt to write one to the read-only mount
         ("default_gpu.rego".to_string(), String::new()),
     ]);
 
     let config_map = ConfigMap {
-        metadata: kube::api::ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(namespace.to_string()),
+        metadata: ObjectMeta {
+            name: Some(ATT_POLICY_MAP.to_string()),
+            owner_references: Some(vec![owner_reference]),
             ..Default::default()
         },
         data: Some(data),
         ..Default::default()
     };
 
-    let config_maps: Api<ConfigMap> = Api::namespaced(client, namespace);
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
-    info_if_exists!(create, "ConfigMap", name);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client.clone());
+    let params = &PostParams::default();
+    let create = config_maps.create(params, &config_map).await;
+    info_if_exists!(create, "ConfigMap", ATT_POLICY_MAP);
 
     Ok(())
 }
 
-pub async fn generate_kbs(
-    client: Client,
-    namespace: &str,
-    trustee: &Trustee,
-) -> anyhow::Result<()> {
-    let labels = BTreeMap::from([
-        (
-            "app.kubernetes.io/name".to_string(),
-            "kbsconfig".to_string(),
-        ),
-        (
-            "app.kubernetes.io/instance".to_string(),
-            "kbsconfig-sample".to_string(),
-        ),
-        (
-            "app.kubernetes.io/part-of".to_string(),
-            "kbs-operator".to_string(),
-        ),
-        (
-            "app.kubernetes.io/managed-by".to_string(),
-            "kustomize".to_string(),
-        ),
-        (
-            "app.kubernetes.io/created-by".to_string(),
-            "kbs-operator".to_string(),
-        ),
+pub async fn generate_trustee_data(client: Client, owner_reference: OwnerReference) -> Result<()> {
+    let kbs_config = include_str!("kbs-config.toml");
+    let policy_rego = include_str!("resource.rego");
+
+    let data = BTreeMap::from([
+        ("kbs-config.toml".to_string(), kbs_config.to_string()),
+        ("policy.rego".to_string(), policy_rego.to_string()),
+        (REFERENCE_VALUES_FILE.to_string(), "{}".to_string()),
     ]);
 
-    let kbs_config = KbsConfig {
-        metadata: kube::api::ObjectMeta {
-            name: Some(trustee.kbs_config_name.clone()),
-            namespace: Some(namespace.to_string()),
-            labels: Some(labels),
+    let config_map = ConfigMap {
+        metadata: ObjectMeta {
+            name: Some(TRUSTEE_DATA_MAP.to_string()),
+            owner_references: Some(vec![owner_reference]),
             ..Default::default()
         },
-        spec: KbsConfigSpec {
-            kbs_config_map_name: trustee.kbs_configuration.clone(),
-            kbs_auth_secret_name: trustee.kbs_auth_key.clone(),
-            kbs_deployment_type: "AllInOneDeployment".to_string(),
-            kbs_rvps_ref_values_config_map_name: trustee.reference_values.clone(),
-            kbs_secret_resources: vec![],
-            kbs_https_key_secret_name: HTTPS_KEY.to_string(),
-            kbs_https_cert_secret_name: HTTPS_CERT.to_string(),
-            kbs_resource_policy_config_map_name: trustee.resource_policy.clone(),
-            kbs_attestation_policy_config_map_name: trustee.attestation_policy.clone(),
-        },
+        data: Some(data),
+        ..Default::default()
     };
 
-    let kbs_configs: Api<KbsConfig> = Api::namespaced(client, namespace);
-    let create = kbs_configs
-        .create(&PostParams::default(), &kbs_config)
-        .await;
-    info_if_exists!(create, "KbsConfig", trustee.kbs_config_name);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client.clone());
+    let params = &PostParams::default();
+    let create = config_maps.create(params, &config_map).await;
+    info_if_exists!(create, "ConfigMap", TRUSTEE_DATA_MAP);
+
+    Ok(())
+}
+
+pub async fn generate_kbs_service(client: Client, owner_reference: OwnerReference) -> Result<()> {
+    let svc_name = "kbs-service";
+    let selector = Some(BTreeMap::from([("app".to_string(), "kbs".to_string())]));
+
+    let service = Service {
+        metadata: ObjectMeta {
+            name: Some(svc_name.to_string()),
+            owner_references: Some(vec![owner_reference.clone()]),
+            ..Default::default()
+        },
+        spec: Some(ServiceSpec {
+            selector: selector.clone(),
+            ports: Some(vec![ServicePort {
+                name: Some("kbs-port".to_string()),
+                port: KBS_PORT,
+                target_port: Some(IntOrString::Int(KBS_PORT)),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let services: Api<Service> = Api::default_namespaced(client.clone());
+    let create = services.create(&PostParams::default(), &service).await;
+    info_if_exists!(create, "Service", svc_name);
+
+    Ok(())
+}
+
+fn generate_kbs_volume_templates() -> [(&'static str, &'static str, Volume); 4] {
+    [
+        (
+            ATT_POLICY_MAP,
+            "/opt/trustee/policies/opa",
+            Volume {
+                config_map: Some(ConfigMapVolumeSource {
+                    name: ATT_POLICY_MAP.to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            TRUSTEE_DATA_MAP,
+            TRUSTEE_DATA_DIR,
+            Volume {
+                config_map: Some(ConfigMapVolumeSource {
+                    name: TRUSTEE_DATA_MAP.to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "resource-dir",
+            TRUSTEE_SECRETS_PATH,
+            Volume {
+                empty_dir: Some(EmptyDirVolumeSource {
+                    medium: Some("Memory".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ),
+        // default repo must be writable
+        (
+            "default-repo",
+            "/opt/trustee/kbs-repository/default",
+            Volume {
+                empty_dir: Some(EmptyDirVolumeSource {
+                    medium: Some("Memory".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ),
+    ]
+}
+
+fn generate_kbs_pod_spec(image: &str) -> PodSpec {
+    let volumes = generate_kbs_volume_templates();
+    PodSpec {
+        containers: vec![Container {
+            command: Some(vec![
+                "/usr/local/bin/kbs".to_string(),
+                "--config-file".to_string(),
+                format!("{TRUSTEE_DATA_DIR}/{KBS_CONFIG_FILE}"),
+            ]),
+            image: Some(image.to_string()),
+            name: "kbs".to_string(),
+            ports: Some(vec![ContainerPort {
+                container_port: KBS_PORT,
+                ..Default::default()
+            }]),
+            volume_mounts: Some(
+                volumes
+                    .iter()
+                    .map(|(name, mount_path, _)| VolumeMount {
+                        name: name.to_string(),
+                        mount_path: mount_path.to_string(),
+                        ..Default::default()
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        }],
+        volumes: Some(
+            volumes
+                .iter()
+                .map(|(name, _, volume)| {
+                    let mut volume = volume.clone();
+                    volume.name = name.to_string();
+                    volume.clone()
+                })
+                .collect(),
+        ),
+        ..Default::default()
+    }
+}
+
+pub async fn generate_kbs_deployment(
+    client: Client,
+    owner_reference: OwnerReference,
+    image: &str,
+) -> Result<()> {
+    let selector = Some(BTreeMap::from([("app".to_string(), "kbs".to_string())]));
+    let pod_spec = generate_kbs_pod_spec(image);
+
+    // Inspired by trustee-operator
+    let deployment = Deployment {
+        metadata: ObjectMeta {
+            name: Some(DEPLOYMENT_NAME.to_string()),
+            owner_references: Some(vec![owner_reference]),
+            ..Default::default()
+        },
+        spec: Some(DeploymentSpec {
+            selector: LabelSelector {
+                match_labels: selector.clone(),
+                ..Default::default()
+            },
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: selector,
+                    ..Default::default()
+                }),
+                spec: Some(pod_spec),
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let deployments: Api<Deployment> = Api::default_namespaced(client);
+    let params = &PostParams::default();
+    let create = deployments.create(params, &deployment).await;
+    info_if_exists!(create, "Deployment", DEPLOYMENT_NAME);
 
     Ok(())
 }

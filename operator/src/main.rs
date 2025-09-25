@@ -79,70 +79,28 @@ fn generate_owner_reference(metadata: &ObjectMeta) -> Result<OwnerReference> {
     })
 }
 
-async fn install_trustee_configuration(client: Client, namespace: String) -> Result<()> {
-    let cocl = list_confidential_clusters(client.clone(), &namespace).await?;
-    let trustee_namespace = cocl.spec.trustee.namespace.clone();
+async fn install_trustee_configuration(client: Client) -> Result<()> {
+    let namespace = client.default_namespace();
+    let cocl = list_confidential_clusters(client.clone(), namespace).await?;
     let owner_reference = generate_owner_reference(&cocl.metadata)?;
 
-    match trustee::generate_kbs_auth_public_key(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.kbs_auth_key,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate secret authentication key: {}",
-            cocl.spec.trustee.kbs_auth_key
-        ),
-        Err(e) => error!("Failed to create the secret authentication key: {e}"),
-    }
-
-    match trustee::generate_kbs_configurations(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate configmap for the KBS configuration: {}",
-            cocl.spec.trustee.kbs_configuration
-        ),
+    match trustee::generate_trustee_data(client.clone(), owner_reference.clone()).await {
+        Ok(_) => info!("Generate configmap for the KBS configuration",),
         Err(e) => error!("Failed to create the KBS configuration configmap: {e}"),
-    }
-
-    match trustee::generate_kbs_https_certificate(client.clone(), &trustee_namespace).await {
-        Ok(_) => info!("Generated HTTPS certificates for the KBS"),
-        Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
     let rv_ctx = trustee::RvContextData {
         client: client.clone(),
-        owner_reference,
-        operator_namespace: namespace.clone(),
-        trustee_namespace: trustee_namespace.clone(),
+        owner_reference: owner_reference.clone(),
+        operator_namespace: namespace.to_string(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image,
-        rv_map: cocl.spec.trustee.reference_values.clone(),
     };
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
-    match reference_values::create_pcrs_config_map(client.clone(), &namespace).await {
+    match reference_values::create_pcrs_config_map(client.clone(), namespace).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
     }
-    match trustee::create_reference_value_config_map(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.reference_values,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Created bare configmap for the reference values: {}",
-            cocl.spec.trustee.reference_values
-        ),
-        Err(e) => error!("Failed to create the reference values configmap: {e}"),
-    }
+
     // TODO machine config input
     match reference_values::handle_new_image(rv_ctx, BOOT_IMAGE).await {
         Ok(_) => info!("Computed or retrieved reference values for image: {BOOT_IMAGE}",),
@@ -151,52 +109,30 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
         }
     }
 
-    match trustee::generate_resource_policy(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.resource_policy,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate configmap for the resource policy: {}",
-            cocl.spec.trustee.resource_policy
-        ),
-        Err(e) => error!("Failed to create the resource policy configmap: {e}"),
-    }
-
-    match trustee::generate_attestation_policy(
-        client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.attestation_policy,
-    )
-    .await
-    {
-        Ok(_) => info!(
-            "Generate configmap for the attestation policy: {}",
-            cocl.spec.trustee.attestation_policy
-        ),
+    match trustee::generate_attestation_policy(client.clone(), owner_reference.clone()).await {
+        Ok(_) => info!("Generate configmap for the attestation policy",),
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    match trustee::generate_kbs(client.clone(), &trustee_namespace, &cocl.spec.trustee).await {
-        Ok(_) => info!(
-            "Generate the KBS configuration: {}",
-            cocl.spec.trustee.kbs_config_name
-        ),
-        Err(e) => error!("Failed to create the KBS configuration: {e}"),
+    match trustee::generate_kbs_service(client.clone(), owner_reference.clone()).await {
+        Ok(_) => info!("Generate the KBS service"),
+        Err(e) => error!("Failed to create the KBS service: {e}"),
     }
 
-    // TODO replace this creation with a per-machine one.
-    // This secret's address is `default/machine/root`.
-    match trustee::generate_secret(
+    match trustee::generate_kbs_deployment(
         client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.kbs_config_name,
-        "machine",
+        owner_reference,
+        &cocl.spec.trustee_image,
     )
     .await
     {
+        Ok(_) => info!("Generate the KBS deployment"),
+        Err(e) => error!("Failed to create the KBS deployment: {e}"),
+    }
+
+    // TODO replace this creation with a per-machine one.
+    // This secret's address is `conf-cluster/machine/root`.
+    match trustee::generate_secret(client.clone(), "machine").await {
         Ok(_) => info!("Generate test secret"),
         Err(e) => error!("Failed to create test secret: {e}"),
     }
@@ -216,7 +152,7 @@ async fn main() -> Result<()> {
     info!("Confidential clusters operator",);
     let cl = Api::<ConfidentialCluster>::namespaced(client.clone(), &namespace);
 
-    tokio::spawn(install_trustee_configuration(client.clone(), namespace));
+    tokio::spawn(install_trustee_configuration(client.clone()));
     Controller::new(cl, watcher::Config::default())
         .run::<_, ContextData>(reconcile, error_policy, context)
         .for_each(|res| async move {

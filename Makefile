@@ -10,6 +10,8 @@ KUBECTL=kubectl
 REGISTRY ?= quay.io
 OPERATOR_IMAGE=$(REGISTRY)/confidential-clusters/cocl-operator:latest
 COMPUTE_PCRS_IMAGE=$(REGISTRY)/confidential-clusters/compute-pcrs:latest
+# TODO add support for TPM AK verification, then move to a KBS with implemented verifier
+TRUSTEE_IMAGE ?= quay.io/confidential-clusters/key-broker-service:tpm-verifier-built-in-as-20250711
 
 BUILD_TYPE ?= release
 
@@ -28,7 +30,7 @@ manifests-dir:
 manifests: tools
 	target/debug/manifest-gen --output-dir manifests \
 		--image $(OPERATOR_IMAGE) \
-		--trustee-namespace operators \
+		--trustee-image $(TRUSTEE_IMAGE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE)
 
 cluster-up:
@@ -46,14 +48,12 @@ push: image
 	podman push $(OPERATOR_IMAGE) --tls-verify=false
 	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
 
-install-trustee:
-	scripts/install-trustee.sh
-
 install:
 	scripts/clean-cluster-kind.sh $(OPERATOR_IMAGE) $(COMPUTE_PCRS_IMAGE)
 	$(KUBECTL) apply -f manifests/operator.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_crd.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_cr.yaml
+	$(KUBECTL) apply -f kind/kbs-forward.yaml
 
 clean:
 	cargo clean

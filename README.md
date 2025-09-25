@@ -29,14 +29,12 @@ within the cluster.
 
 ### Quick Start
 
-Create the cluster, install [trustee operator](https://github.com/confidential-containers/trustee-operator) and deploy 
-the operator.
+Create the cluster and deploy the operator.
 
 ```bash
 make cluster-up
 make REGISTRY=localhost:5000 image push # optional: use BUILD_TYPE=debug
 make REGISTRY=localhost:5000 manifests
-make install-trustee
 make install
 ```
 
