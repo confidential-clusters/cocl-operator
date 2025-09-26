@@ -28,7 +28,9 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::trustee::{self, get_image_pcrs};
-use operator::{ControllerError, RvContextData, controller_error_policy, info_if_exists};
+use operator::{
+    ControllerError, RvContextData, controller_error_policy, controller_info, info_if_exists,
+};
 use rv_store::*;
 
 const JOB_LABEL_KEY: &str = "kind";
@@ -178,12 +180,7 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
     tokio::spawn(
         Controller::new(jobs, watcher)
             .run(job_reconcile, controller_error_policy, Arc::new(ctx))
-            .for_each(|res| async move {
-                match res {
-                    Ok(o) => info!("reconciled {o:?}"),
-                    Err(e) => info!("reconcile failed: {e:?}"),
-                }
-            }),
+            .for_each(controller_info),
     );
 }
 
