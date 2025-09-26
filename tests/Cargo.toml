@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
+#
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "cocl-operator-integration-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+crds = { path = "../crds" }
+env_logger.workspace = true
+k8s-openapi.workspace = true
+kube = { workspace = true }
+log.workspace = true
+tokio = { workspace = true, features = ["process"] }
+uuid.workspace = true
+
+[[test]]
+name = "confidential_cluster"
+path = "confidential_cluster.rs"
