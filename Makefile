@@ -84,3 +84,6 @@ test:
 
 test-release:
 	cargo test --workspace --all-targets --release
+
+integration-tests:
+	RUST_LOG=info cargo test --test '*' -- --no-capture
