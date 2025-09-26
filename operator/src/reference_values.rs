@@ -14,6 +14,7 @@ use k8s_openapi::api::{
         PodTemplateSpec, Volume, VolumeMount,
     },
 };
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{DeleteParams, ObjectMeta, PostParams};
 use kube::runtime::{
     controller::{Action, Controller},
@@ -174,10 +175,10 @@ async fn job_reconcile(job: Arc<Job>, ctx: Arc<RvContextData>) -> Result<Action,
         return Ok(Action::requeue(Duration::from_secs(300)));
     }
     let jobs: Api<Job> = Api::namespaced(ctx.client.clone(), &ctx.operator_namespace);
-    jobs.delete(name, &DeleteParams::default())
-        .await
-        .map_err(Into::<anyhow::Error>::into)?;
-    trustee::recompute_reference_values(Arc::<RvContextData>::unwrap_or_clone(ctx)).await?;
+    // Foreground deletion: Delete the pod too
+    let delete = jobs.delete(name, &DeleteParams::foreground()).await;
+    delete.map_err(Into::<anyhow::Error>::into)?;
+    trustee::update_reference_values(Arc::<RvContextData>::unwrap_or_clone(ctx)).await?;
     Ok(Action::await_change())
 }
 
@@ -206,6 +207,7 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
 
 async fn compute_fresh_pcrs(
     client: Client,
+    owner_reference: OwnerReference,
     namespace: &str,
     boot_image: &str,
     pcrs_compute_image: &str,
@@ -228,6 +230,7 @@ async fn compute_fresh_pcrs(
                 JOB_LABEL_KEY.to_string(),
                 PCR_COMMAND_NAME.to_string(),
             )])),
+            owner_references: Some(vec![owner_reference]),
             ..Default::default()
         },
         spec: Some(JobSpec {
@@ -255,9 +258,11 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
     }
     let label = fetch_pcr_label(boot_image).await?;
     if label.is_none() {
+        let client = ctx.client.clone();
+        let owner = ctx.owner_reference.clone();
         let ns = &ctx.operator_namespace;
         let comp_img = &ctx.pcrs_compute_image;
-        return compute_fresh_pcrs(ctx.client.clone(), ns, boot_image, comp_img).await;
+        return compute_fresh_pcrs(client, owner, ns, boot_image, comp_img).await;
     }
 
     let image_pcr = ImagePcr {
@@ -274,7 +279,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
     config_maps
         .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
         .await?;
-    trustee::recompute_reference_values(ctx).await
+    trustee::update_reference_values(ctx).await
 }
 
 #[allow(dead_code)]
@@ -292,5 +297,5 @@ pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> anyhow::Res
     config_maps
         .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
         .await?;
-    trustee::recompute_reference_values(ctx).await
+    trustee::update_reference_values(ctx).await
 }
