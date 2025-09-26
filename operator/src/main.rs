@@ -6,61 +6,51 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use env_logger::Env;
 use futures_util::StreamExt;
 use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{Api, Client, api::ListParams};
-
-use log::{error, info};
-use thiserror::Error;
+use kube::{Api, Client};
+use log::{error, info, warn};
 
 use crds::ConfidentialCluster;
 mod reference_values;
 mod trustee;
 
-#[derive(Debug, Error)]
-enum Error {}
-
-#[derive(Clone)]
-struct ContextData {
-    #[allow(dead_code)]
-    client: Client,
-}
-
 const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
 
-async fn list_confidential_clusters(client: Client) -> anyhow::Result<ConfidentialCluster> {
-    info!(
-        "Listing ConfidentialClusters in namespace '{}'",
-        client.default_namespace()
-    );
-    let api: Api<ConfidentialCluster> = Api::default_namespaced(client.clone());
-    let lp = ListParams::default();
-    let list = api.list(&lp).await?;
-    match list.items.len() {
-        0 => bail!("No confidential cluster resource found"),
-        1 => {
-            let item = &list.items[0];
-            info!(
-                "Found ConfidentialCluster: {}",
-                item.metadata.name.as_deref().unwrap_or("<no name>"),
-            );
-            Ok(item.clone())
-        }
-        _ => bail!("too many confidential cluster resources defined in the namespace"),
+async fn reconcile(
+    cocl: Arc<ConfidentialCluster>,
+    client: Arc<Client>,
+) -> Result<Action, operator::ControllerError> {
+    let name = cocl.metadata.name.as_deref().unwrap_or("<no name>");
+    if cocl.metadata.deletion_timestamp.is_some() {
+        info!("Registered deletion of ConfidentialCluster {name}");
+        return Ok(Action::await_change());
     }
+    let kube_client = Arc::unwrap_or_clone(client);
+
+    let cocls: Api<ConfidentialCluster> = Api::default_namespaced(kube_client.clone());
+    let list = cocls.list(&Default::default()).await;
+    let cocl_list = list.map_err(Into::<anyhow::Error>::into)?;
+    if cocl_list.items.len() > 1 {
+        let namespace = kube_client.default_namespace();
+        warn!(
+            "More than one ConfidentialCluster found in namespace {namespace}. \
+              cocl-operator does not support more than one ConfidentialCluster. Requeueing...",
+        );
+        return Ok(Action::requeue(Duration::from_secs(60)));
+    }
+
+    info!("Setting up ConfidentialCluster {name}");
+    install_trustee_configuration(kube_client, &cocl).await?;
+    Ok(Action::await_change())
 }
 
-async fn reconcile(_g: Arc<ConfidentialCluster>, _ctx: Arc<ContextData>) -> Result<Action, Error> {
-    Ok(Action::requeue(Duration::from_secs(300)))
-}
-
-async fn install_trustee_configuration(client: Client) -> Result<()> {
-    let cocl = list_confidential_clusters(client.clone()).await?;
+async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluster) -> Result<()> {
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
 
     match trustee::generate_kbs_auth_public_key(
@@ -99,7 +89,7 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
     let rv_ctx = operator::RvContextData {
         client: client.clone(),
         trustee_namespace: trustee_namespace.clone(),
-        pcrs_compute_image: cocl.spec.pcrs_compute_image,
+        pcrs_compute_image: cocl.spec.pcrs_compute_image.clone(),
         rv_map: cocl.spec.trustee.reference_values.clone(),
     };
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
@@ -185,22 +175,14 @@ async fn install_trustee_configuration(client: Client) -> Result<()> {
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let client = Client::try_default().await?;
-    let context = Arc::new(ContextData {
-        client: client.clone(),
-    });
+    let kube_client = Client::try_default().await?;
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::default_namespaced(client.clone());
+    let cl = Api::<ConfidentialCluster>::default_namespaced(kube_client.clone());
 
-    tokio::spawn(install_trustee_configuration(client.clone()));
+    let client = Arc::new(kube_client);
     Controller::new(cl, watcher::Config::default())
-        .run::<_, ContextData>(reconcile, operator::controller_error_policy, context)
-        .for_each(|res| async move {
-            match res {
-                Ok(o) => info!("reconciled {o:?}"),
-                Err(e) => info!("reconcile failed: {e:?}"),
-            }
-        })
+        .run::<_, Client>(reconcile, operator::controller_error_policy, client)
+        .for_each(operator::controller_info)
         .await;
 
     Ok(())
