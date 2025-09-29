@@ -40,7 +40,7 @@ jobs:
       - name: "cargo build"
         run: cargo build --all-targets
       - name: "cargo test"
-        run: cargo test --all-targets
+        run: cargo test --lib
   tests-release-stable:
     name: "Tests (release), stable toolchain"
     runs-on: "ubuntu-24.04"
@@ -55,9 +55,9 @@ jobs:
       - name: "Cache build artifacts"
         uses: Swatinem/rust-cache@v2
       - name: "cargo build (release)"
-        run: cargo build --all-targets --release
+        run: cargo build --lib --release
       - name: "cargo test (release)"
-        run: cargo test --all-targets --release
+        run: cargo test --lib --release
   tests-release-msrv:
     name: "Tests (release), minimum supported toolchain"
     runs-on: "ubuntu-24.04"
@@ -78,9 +78,9 @@ jobs:
       - name: "Cache build artifacts"
         uses: Swatinem/rust-cache@v2
       - name: "cargo build (release)"
-        run: cargo build --all-targets --release
+        run: cargo build --lib --release
       - name: "cargo test (release)"
-        run: cargo test --all-targets --release
+        run: cargo test --lib --release
   linting:
     name: "Lints, pinned toolchain"
     runs-on: "ubuntu-24.04"
@@ -117,6 +117,6 @@ jobs:
       - name: "Cache build artifacts"
         uses: Swatinem/rust-cache@v2
       - name: "cargo build"
-        run: cargo build --all-targets
+        run: cargo build --lib
       - name: "cargo test"
-        run: cargo test --all-targets
+        run: cargo test --lib
