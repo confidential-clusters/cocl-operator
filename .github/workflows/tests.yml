@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Demeng<demeng@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+name: "Rust Tests"
+on:
+  pull_request:
+    branches:
+      - "main"
+permissions:
+  contents: "read"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tests:
+    name: "Tests"
+    runs-on: "ubuntu-24.04"
+    container: "ghcr.io/confidential-clusters/buildroot:latest"
+    steps:
+      - name: "Check out repository"
+        uses: actions/checkout@v5
+      - name: "Install toolchain"
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: "Cache build artifacts"
+        uses: Swatinem/rust-cache@v2
+      - name: "cargo test"
+        run: cargo test --all-targets
