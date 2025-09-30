@@ -51,7 +51,7 @@ make install-trustee
 make install
 ```
 
-The KBS port will be forwarded to `8080` on your machine; the node register server to `3030`, where new Ignition configs are served at `/register`.
+The KBS port will be forwarded to `8080` on your machine; the node register server to `8000`, where new Ignition configs are served at `/register`.
 
 ### Test
 

@@ -31,7 +31,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::trustee;
 use operator::{ClevisContextData, ControllerError, controller_error_policy};
 
-const REGISTER_SERVER_PORT: i32 = 3030;
+const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
 
 pub async fn create_register_server_rbac(client: Client) -> Result<()> {
     let name = "register-server";
@@ -162,14 +162,14 @@ pub async fn create_register_server_deployment(
                         name: name.to_string(),
                         image: Some(image.to_string()),
                         ports: Some(vec![ContainerPort {
-                            container_port: REGISTER_SERVER_PORT,
+                            container_port: INTERNAL_REGISTER_SERVER_PORT,
                             name: Some("http".to_string()),
                             protocol: Some("TCP".to_string()),
                             ..Default::default()
                         }]),
                         args: Some(vec![
                             "--port".to_string(),
-                            REGISTER_SERVER_PORT.to_string(),
+                            INTERNAL_REGISTER_SERVER_PORT.to_string(),
                             "--public-addr".to_string(),
                             address.to_string(),
                         ]),
@@ -203,6 +203,7 @@ pub async fn create_register_server_deployment(
 pub async fn create_register_server_service(
     client: Client,
     owner_reference: OwnerReference,
+    register_server_port: i32,
 ) -> Result<()> {
     let name = "register-server";
     let app_label = "register-server";
@@ -219,8 +220,8 @@ pub async fn create_register_server_service(
             selector: Some(labels),
             ports: Some(vec![ServicePort {
                 name: Some("http".to_string()),
-                port: REGISTER_SERVER_PORT,
-                target_port: Some(IntOrString::Int(REGISTER_SERVER_PORT)),
+                port: register_server_port,
+                target_port: Some(IntOrString::Int(INTERNAL_REGISTER_SERVER_PORT)),
                 protocol: Some("TCP".to_string()),
                 ..Default::default()
             }]),

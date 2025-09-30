@@ -12,6 +12,6 @@ spec:
   ports:
   - name: http
     nodePort: 31001
-    port: 3030
+    port: 8000
   selector:
     app: register-server

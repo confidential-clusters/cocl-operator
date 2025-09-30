@@ -218,7 +218,13 @@ async fn install_register_server(client: Client) -> Result<()> {
         Err(e) => error!("Failed to create register server deployment: {e}"),
     }
 
-    match register_server::create_register_server_service(client.clone(), owner_reference).await {
+    match register_server::create_register_server_service(
+        client.clone(),
+        owner_reference,
+        cocl.spec.register_server_port,
+    )
+    .await
+    {
         Ok(_) => info!("Register server service created/updated successfully"),
         Err(e) => error!("Failed to create register server service: {e}"),
     }

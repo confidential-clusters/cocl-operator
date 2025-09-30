@@ -21,6 +21,7 @@ pub struct ConfidentialClusterSpec {
     pub pcrs_compute_image: String,
     pub register_server_image: String,
     pub trustee_addr: String,
+    pub register_server_port: i32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

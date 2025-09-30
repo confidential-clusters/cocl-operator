@@ -38,7 +38,8 @@ endif
 		--trustee-namespace operators \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
 		--register-server-image $(REG_SERVER_IMAGE) \
-		--trustee-addr $(TRUSTEE_ADDR):8080
+		--trustee-addr $(TRUSTEE_ADDR):8080 \
+		--register-server-port 8000
 
 cluster-up:
 	scripts/create-cluster-kind.sh

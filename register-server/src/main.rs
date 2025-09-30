@@ -22,7 +22,7 @@ use warp::Filter;
 #[command(name = "register-server")]
 #[command(about = "HTTP server that generates Clevis PINs with random UUIDs")]
 struct Args {
-    #[arg(short, long, default_value = "3030")]
+    #[arg(short, long, default_value = "8000")]
     port: u16,
 
     #[arg(long)]
