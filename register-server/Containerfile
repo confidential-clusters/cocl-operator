@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+ARG build_type
+FROM ghcr.io/confidential-clusters/buildroot AS builder
+ARG build_type
+WORKDIR /register-server
+
+COPY Cargo.toml Cargo.lock .
+COPY crds crds
+COPY register-server/Cargo.toml register-server/
+COPY register-server/src/lib.rs register-server/src/
+
+# Set only required crates as members to minimize rebuilds upon changes.
+# In debug builds, build dependencies to avoid full rebuild.
+RUN sed -i 's/members =.*/members = ["crds", "register-server"]/' Cargo.toml && \
+    if [ "$build_type" = debug ]; then cargo build -p register-server --lib; fi
+
+COPY register-server/src register-server/src
+RUN cargo build -p register-server $(if [ "$build_type" = release ]; then echo --release; fi)
+
+FROM quay.io/fedora/fedora:42
+ARG build_type
+COPY --from=builder "/register-server/target/$build_type/register-server" /usr/bin
+EXPOSE 3030
+ENTRYPOINT ["/usr/bin/register-server"]

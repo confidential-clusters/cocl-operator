@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 pub struct ConfidentialClusterSpec {
     pub trustee: Trustee,
     pub pcrs_compute_image: String,
+    pub register_server_image: String,
+    pub trustee_addr: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -51,4 +53,17 @@ pub struct KbsConfigSpec {
     pub kbs_https_cert_secret_name: String,
     pub kbs_resource_policy_config_map_name: String,
     pub kbs_attestation_policy_config_map_name: String,
+}
+
+#[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[kube(
+    group = "confidential-containers.io",
+    version = "v1alpha1",
+    kind = "Machine",
+    namespaced,
+    plural = "machines"
+)]
+pub struct MachineSpec {
+    pub id: String,
+    pub address: String,
 }

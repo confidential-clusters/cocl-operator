@@ -6,20 +6,25 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use env_logger::Env;
 use futures_util::StreamExt;
-use kube::runtime::{
-    controller::{Action, Controller},
-    watcher,
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use kube::{Api, Client, Resource, api::ListParams};
+use kube::{
+    api::ObjectMeta,
+    runtime::{
+        controller::{Action, Controller},
+        watcher,
+    },
 };
-use kube::{Api, Client, api::ListParams};
 
 use log::{error, info};
 use thiserror::Error;
 
 use crds::ConfidentialCluster;
 mod reference_values;
+mod register_server;
 mod trustee;
 
 #[derive(Debug, Error)]
@@ -33,12 +38,12 @@ struct ContextData {
 
 const BOOT_IMAGE: &str = "quay.io/fedora/fedora-coreos:42.20250705.3.0";
 
-async fn list_confidential_clusters(
-    client: Client,
-    namespace: &str,
-) -> anyhow::Result<ConfidentialCluster> {
-    info!("Listing ConfidentialClusters in namespace '{namespace}'");
-    let api: Api<ConfidentialCluster> = Api::namespaced(client.clone(), namespace);
+async fn list_confidential_clusters(client: Client) -> anyhow::Result<ConfidentialCluster> {
+    info!(
+        "Listing ConfidentialClusters in namespace '{}'",
+        client.default_namespace()
+    );
+    let api: Api<ConfidentialCluster> = Api::default_namespaced(client.clone());
     let lp = ListParams::default();
     let list = api.list(&lp).await?;
     match list.items.len() {
@@ -58,12 +63,22 @@ async fn list_confidential_clusters(
 async fn reconcile(_g: Arc<ConfidentialCluster>, _ctx: Arc<ContextData>) -> Result<Action, Error> {
     Ok(Action::requeue(Duration::from_secs(300)))
 }
-fn error_policy(_obj: Arc<ConfidentialCluster>, _error: &Error, _ctx: Arc<ContextData>) -> Action {
-    Action::requeue(Duration::from_secs(60))
+
+fn generate_owner_reference(metadata: &ObjectMeta) -> Result<OwnerReference> {
+    let name = metadata.name.clone();
+    let uid = metadata.uid.clone();
+    Ok(OwnerReference {
+        api_version: ConfidentialCluster::api_version(&()).to_string(),
+        block_owner_deletion: Some(true),
+        controller: Some(true),
+        kind: ConfidentialCluster::kind(&()).to_string(),
+        name: name.context("ConfidentialCluster had no name")?,
+        uid: uid.context("ConfidentialCluster had no UID")?,
+    })
 }
 
-async fn install_trustee_configuration(client: Client, namespace: String) -> Result<()> {
-    let cocl = list_confidential_clusters(client.clone(), &namespace).await?;
+async fn install_trustee_configuration(client: Client) -> Result<()> {
+    let cocl = list_confidential_clusters(client.clone()).await?;
     let trustee_namespace = cocl.spec.trustee.namespace.clone();
 
     match trustee::generate_kbs_auth_public_key(
@@ -99,15 +114,14 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
         Err(e) => error!("Failed to create HTTPS certificates for the KBS: {e}"),
     }
 
-    let rv_ctx = trustee::RvContextData {
+    let rv_ctx = operator::RvContextData {
         client: client.clone(),
-        operator_namespace: namespace.clone(),
         trustee_namespace: trustee_namespace.clone(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image,
         rv_map: cocl.spec.trustee.reference_values.clone(),
     };
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
-    match reference_values::create_pcrs_config_map(client.clone(), &namespace).await {
+    match reference_values::create_pcrs_config_map(client.clone()).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
     }
@@ -168,19 +182,53 @@ async fn install_trustee_configuration(client: Client, namespace: String) -> Res
         Err(e) => error!("Failed to create the KBS configuration: {e}"),
     }
 
-    // TODO replace this creation with a per-machine one.
-    // This secret's address is `default/machine/root`.
-    match trustee::generate_secret(
+    // Create a dummy secret. If there is no secret created early, trustee-operator does not allow
+    // for updating them later as it changes the KbsConfig structure to include no new keys.
+    let clevis_ctx = operator::ClevisContextData {
+        client,
+        trustee_namespace: cocl.spec.trustee.namespace.clone(),
+        kbs_config: cocl.spec.trustee.kbs_config_name.clone(),
+    };
+    match trustee::generate_secret(clevis_ctx, "dummy").await {
+        Ok(_) => info!("Generate dummy secret"),
+        Err(e) => error!("Failed to create dummy secret: {e}"),
+    }
+
+    Ok(())
+}
+
+async fn install_register_server(client: Client) -> Result<()> {
+    let cocl = list_confidential_clusters(client.clone()).await?;
+    let owner_reference = generate_owner_reference(&cocl.metadata)?;
+
+    match register_server::create_register_server_rbac(client.clone()).await {
+        Ok(_) => info!("Register server RBAC created/updated successfully"),
+        Err(e) => error!("Failed to create register server RBAC: {e}"),
+    }
+
+    match register_server::create_register_server_deployment(
         client.clone(),
-        &trustee_namespace,
-        &cocl.spec.trustee.kbs_config_name,
-        "machine",
+        owner_reference.clone(),
+        &cocl.spec.register_server_image,
+        &cocl.spec.trustee_addr,
     )
     .await
     {
-        Ok(_) => info!("Generate test secret"),
-        Err(e) => error!("Failed to create test secret: {e}"),
+        Ok(_) => info!("Register server deployment created/updated successfully"),
+        Err(e) => error!("Failed to create register server deployment: {e}"),
     }
+
+    match register_server::create_register_server_service(client.clone(), owner_reference).await {
+        Ok(_) => info!("Register server service created/updated successfully"),
+        Err(e) => error!("Failed to create register server service: {e}"),
+    }
+
+    let clevis_ctx = operator::ClevisContextData {
+        client,
+        trustee_namespace: cocl.spec.trustee.namespace.clone(),
+        kbs_config: cocl.spec.trustee.kbs_config_name.clone(),
+    };
+    register_server::launch_keygen_controller(clevis_ctx).await;
 
     Ok(())
 }
@@ -190,16 +238,16 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let client = Client::try_default().await?;
-    let namespace = client.clone().default_namespace().to_string();
     let context = Arc::new(ContextData {
         client: client.clone(),
     });
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::namespaced(client.clone(), &namespace);
+    let cl = Api::<ConfidentialCluster>::default_namespaced(client.clone());
 
-    tokio::spawn(install_trustee_configuration(client.clone(), namespace));
+    tokio::spawn(install_trustee_configuration(client.clone()));
+    tokio::spawn(install_register_server(client.clone()));
     Controller::new(cl, watcher::Config::default())
-        .run::<_, ContextData>(reconcile, error_policy, context)
+        .run::<_, ContextData>(reconcile, operator::controller_error_policy, context)
         .for_each(|res| async move {
             match res {
                 Ok(o) => info!("reconciled {o:?}"),

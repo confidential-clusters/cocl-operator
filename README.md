@@ -12,6 +12,7 @@ within the cluster.
 
 -   `/operator`: Contains the source code for the Kubernetes operator itself.
 -   `/crds`: Defines the `ConfidentialCluster` Custom Resource Definition (CRD) in Rust.
+-   `/register-server`: A server that provides Clevis PINs for key retrieval with random UUIDs.
 -   `/manifest-gen`: A tool for generating all the necessary Kubernetes manifests (Operator Deployment, CRD, RBAC rules, etc.).
 -   `/scripts`: Helper scripts for managing a local `kind` development cluster.
 -   `/manifests`: The default output directory for generated manifests. This directory is not checked into source control.
@@ -30,15 +31,25 @@ within the cluster.
 Create the cluster, install [trustee operator](https://github.com/confidential-containers/trustee-operator) and deploy 
 the operator.
 
+Provide an address where the VM you will attest from can access the cluster.
+In many cases, this will be your gateway address (`arp -a`).
+For an existing VM on system libvirt, you can also find this address via `virsh net-dhcp-leases`.
+
+```bash
+$ arp -a
+_gateway (192.168.178.1) at 34:2c:c4:de:fc:52 [ether] on wlp0s20f3
+$ ip=192.168.178.1
+``
+
 ```bash
 make cluster-up
 make REGISTRY=localhost:5000 image push # optional: use BUILD_TYPE=debug
-make REGISTRY=localhost:5000 manifests
+make REGISTRY=localhost:5000 TRUSTEE_ADDR=$ip manifests
 make install-trustee
 make install
 ```
 
-The KBS port will be forwarded to `8080` on your machine.
+The KBS port will be forwarded to `8080` on your machine; the node register server to `3030`, where new Ignition configs are served at `/register`.
 
 ### Test
 
