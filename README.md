@@ -33,13 +33,14 @@ within the cluster.
 Create the cluster and deploy the operator.
 
 Provide an address where the VM you will attest from can access the cluster.
-In many cases, this will be your gateway address (`arp -a`).
-For an existing VM on system libvirt, you can also find this address via `virsh net-dhcp-leases`.
+When using a local kind & libvirt VM, this may be your gateway address (`default via …` in `ip route`) for user libvirt or bridge (`virbr0` in `ip route`) for system libvirt.
 
 ```bash
-$ arp -a
-_gateway (192.168.178.1) at 34:2c:c4:de:fc:52 [ether] on wlp0s20f3
-$ ip=192.168.178.1
+$ ip route
+...
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1
+...
+$ ip=192.168.122.1
 ``
 
 ```bash
