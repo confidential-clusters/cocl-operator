@@ -28,5 +28,5 @@ openssl = "0.10.73"
 rv-store = { path = "../rv-store" }
 serde.workspace = true
 serde_json.workspace = true
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 tokio.workspace = true
