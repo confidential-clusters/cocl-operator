@@ -10,7 +10,10 @@ use k8s_openapi::{
     api::{
         apps::v1::Deployment,
         batch::v1::Job,
-        core::v1::{ConfigMap, Container, Namespace, PodSpec, PodTemplateSpec, ServiceAccount},
+        core::v1::{
+            ConfigMap, Container, Namespace, PodSpec, PodTemplateSpec, Secret, Service,
+            ServiceAccount,
+        },
         rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject},
     },
     apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta},
@@ -146,20 +149,17 @@ fn generate_operator(args: &Args) -> Result<()> {
             PolicyRule {
                 api_groups: Some(vec!["batch".to_string()]),
                 resources: Some(vec![Job::plural(&()).to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                    "delete".to_string(),
-                ],
+                verbs: vec!["*".to_string()],
                 ..Default::default()
             },
             PolicyRule {
                 api_groups: Some(vec!["".to_string()]),
-                resources: Some(vec![ConfigMap::plural(&()).to_string()]),
+                resources: Some(vec![
+                    ConfigMap::plural(&()).to_string(),
+                    Service::plural(&()).to_string(),
+                    Secret::plural(&()).to_string(),
+                    ServiceAccount::plural(&()).to_string(),
+                ]),
                 verbs: vec![
                     "create".to_string(),
                     "get".to_string(),
@@ -191,72 +191,17 @@ fn generate_operator(args: &Args) -> Result<()> {
             },
             PolicyRule {
                 api_groups: Some(vec!["apps".to_string()]),
-                resources: Some(vec!["deployments".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                    "delete".to_string(),
-                ],
-                ..Default::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["".to_string()]),
-                resources: Some(vec!["services".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                    "delete".to_string(),
-                ],
-                ..Default::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["".to_string()]),
-                resources: Some(vec!["serviceaccounts".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                    "delete".to_string(),
-                ],
+                resources: Some(vec![Deployment::plural(&()).to_string()]),
+                verbs: vec!["*".to_string()],
                 ..Default::default()
             },
             PolicyRule {
                 api_groups: Some(vec!["rbac.authorization.k8s.io".to_string()]),
-                resources: Some(vec!["roles".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                    "delete".to_string(),
-                ],
-                ..Default::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["rbac.authorization.k8s.io".to_string()]),
-                resources: Some(vec!["rolebindings".to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "watch".to_string(),
-                    "patch".to_string(),
-                    "update".to_string(),
-                    "delete".to_string(),
-                ],
+                resources: Some(vec![
+                    Role::plural(&()).to_string(),
+                    RoleBinding::plural(&()).to_string(),
+                ]),
+                verbs: vec!["*".to_string()],
                 ..Default::default()
             },
             PolicyRule {
