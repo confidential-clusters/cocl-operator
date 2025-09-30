@@ -173,7 +173,10 @@ fn generate_operator(args: &Args) -> Result<()> {
             },
             PolicyRule {
                 api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
-                resources: Some(vec![ConfidentialCluster::plural(&()).to_string()]),
+                resources: Some(vec![
+                    ConfidentialCluster::plural(&()).to_string(),
+                    format!("{}/finalizers", ConfidentialCluster::plural(&())),
+                ]),
                 verbs: vec![
                     "create".to_string(),
                     "get".to_string(),
