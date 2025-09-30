@@ -141,7 +141,7 @@ async fn main() {
 
     let args = Args::parse();
 
-    let register_route = warp::path("register")
+    let register_route = warp::path("ignition-clevis-pin-trustee")
         .and(warp::get())
         .and(warp::addr::remote())
         .and(warp::any().map(move || args.public_addr.clone()))
