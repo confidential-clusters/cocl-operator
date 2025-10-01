@@ -14,7 +14,6 @@ use k8s_openapi::api::{
         PodTemplateSpec, Volume, VolumeMount,
     },
 };
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{DeleteParams, ObjectMeta, PostParams};
 use kube::runtime::{
     controller::{Action, Controller},
@@ -188,12 +187,7 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
     );
 }
 
-async fn compute_fresh_pcrs(
-    client: Client,
-    owner_reference: OwnerReference,
-    boot_image: &str,
-    pcrs_compute_image: &str,
-) -> anyhow::Result<()> {
+async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
     // Name job by sanitized image name, plus a hash to disambiguate
     // tags that differed only beyond the truncation limit
     let rfc1035_boot_image = boot_image.replace(['.', ':', '/', '@', '_'], "-");
@@ -203,7 +197,7 @@ async fn compute_fresh_pcrs(
     let mut job_name = format!("{PCR_COMMAND_NAME}-{boot_image_hash_str}-{rfc1035_boot_image}");
     job_name.truncate(63);
 
-    let pod_spec = build_compute_pcrs_pod_spec(boot_image, pcrs_compute_image);
+    let pod_spec = build_compute_pcrs_pod_spec(boot_image, &ctx.pcrs_compute_image);
     let job = Job {
         metadata: ObjectMeta {
             name: Some(job_name.clone()),
@@ -211,7 +205,7 @@ async fn compute_fresh_pcrs(
                 JOB_LABEL_KEY.to_string(),
                 PCR_COMMAND_NAME.to_string(),
             )])),
-            owner_references: Some(vec![owner_reference]),
+            owner_references: Some(vec![ctx.owner_reference]),
             ..Default::default()
         },
         spec: Some(JobSpec {
@@ -224,7 +218,7 @@ async fn compute_fresh_pcrs(
         ..Default::default()
     };
 
-    let jobs: Api<Job> = Api::default_namespaced(client);
+    let jobs: Api<Job> = Api::default_namespaced(ctx.client);
     let create = jobs.create(&PostParams::default(), &job).await;
     info_if_exists!(create, "Job", job_name);
     Ok(())
@@ -239,10 +233,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()
     }
     let label = fetch_pcr_label(boot_image).await?;
     if label.is_none() {
-        let client = ctx.client.clone();
-        let owner = ctx.owner_reference.clone();
-        let comp_img = &ctx.pcrs_compute_image;
-        return compute_fresh_pcrs(client, owner, boot_image, comp_img).await;
+        return compute_fresh_pcrs(ctx, boot_image).await;
     }
 
     let image_pcr = ImagePcr {
