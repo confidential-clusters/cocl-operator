@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use compute_pcrs_lib::Pcr;
 use futures_util::StreamExt;
@@ -42,7 +42,7 @@ struct ComputePcrsOutput {
     pcrs: Vec<Pcr>,
 }
 
-pub async fn create_pcrs_config_map(client: Client) -> anyhow::Result<()> {
+pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
     let empty_data = BTreeMap::from([(
         PCR_CONFIG_FILE.to_string(),
         serde_json::to_string(&ImagePcrs::default())?,
@@ -64,7 +64,7 @@ pub async fn create_pcrs_config_map(client: Client) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fetch_pcr_label(image_ref: &str) -> anyhow::Result<Option<Vec<Pcr>>> {
+async fn fetch_pcr_label(image_ref: &str) -> Result<Option<Vec<Pcr>>> {
     let reference: oci_client::Reference = image_ref.parse()?;
     let client = oci_client::Client::new(Default::default());
     let (_, _, raw_config) = client
@@ -230,7 +230,7 @@ async fn compute_fresh_pcrs(
     Ok(())
 }
 
-pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
+pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
@@ -263,7 +263,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
 }
 
 #[allow(dead_code)]
-pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
+pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
