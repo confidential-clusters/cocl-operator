@@ -17,42 +17,11 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ConfidentialClusterSpec {
-    pub trustee: Trustee,
+    pub trustee_image: String,
     pub pcrs_compute_image: String,
     pub register_server_image: String,
     pub trustee_addr: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-pub struct Trustee {
-    pub namespace: String,
-    pub kbs_configuration: String,
-    pub attestation_policy: String,
-    pub resource_policy: String,
-    pub reference_values: String,
-    pub kbs_auth_key: String,
-    pub kbs_config_name: String,
-}
-
-#[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[kube(
-    group = "confidentialcontainers.org",
-    version = "v1alpha1",
-    kind = "KbsConfig",
-    namespaced,
-    plural = "kbsconfigs"
-)]
-#[serde(rename_all = "camelCase")]
-pub struct KbsConfigSpec {
-    pub kbs_config_map_name: String,
-    pub kbs_auth_secret_name: String,
-    pub kbs_deployment_type: String,
-    pub kbs_rvps_ref_values_config_map_name: String,
-    pub kbs_secret_resources: Vec<String>,
-    pub kbs_https_key_secret_name: String,
-    pub kbs_https_cert_secret_name: String,
-    pub kbs_resource_policy_config_map_name: String,
-    pub kbs_attestation_policy_config_map_name: String,
+    pub register_server_port: i32,
 }
 
 #[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]

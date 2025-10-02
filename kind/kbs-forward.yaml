@@ -5,13 +5,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: register-forward
+  name: kbs-forward
   namespace: confidential-clusters
 spec:
   type: NodePort
   ports:
   - name: http
-    nodePort: 31001
-    port: 8000
+    nodePort: 31000
+    port: 8080
   selector:
-    app: register-server
+    app: kbs

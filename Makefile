@@ -5,12 +5,16 @@
 
 .PHONY: all build tools manifests-dir manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
+NAMESPACE ?= confidential-clusters
+
 KUBECTL=kubectl
 
 REGISTRY ?= quay.io
 OPERATOR_IMAGE=$(REGISTRY)/confidential-clusters/cocl-operator:latest
 COMPUTE_PCRS_IMAGE=$(REGISTRY)/confidential-clusters/compute-pcrs:latest
 REG_SERVER_IMAGE=$(REGISTRY)/confidential-clusters/registration-server:latest
+# TODO add support for TPM AK verification, then move to a KBS with implemented verifier
+TRUSTEE_IMAGE ?= quay.io/confidential-clusters/key-broker-service:tpm-verifier-built-in-as-20250711
 
 BUILD_TYPE ?= release
 
@@ -34,11 +38,13 @@ ifndef TRUSTEE_ADDR
 	$(error TRUSTEE_ADDR is undefined)
 endif
 	target/debug/manifest-gen --output-dir manifests \
+		--namespace $(NAMESPACE) \
 		--image $(OPERATOR_IMAGE) \
-		--trustee-namespace operators \
+		--trustee-image $(TRUSTEE_IMAGE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
 		--register-server-image $(REG_SERVER_IMAGE) \
-		--trustee-addr $(TRUSTEE_ADDR):8080
+		--trustee-addr $(TRUSTEE_ADDR):8080 \
+		--register-server-port 8000
 
 cluster-up:
 	scripts/create-cluster-kind.sh
@@ -57,15 +63,13 @@ push: image
 	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
 	podman push $(REG_SERVER_IMAGE) --tls-verify=false
 
-install-trustee:
-	scripts/install-trustee.sh
-
 install:
 	scripts/clean-cluster-kind.sh $(OPERATOR_IMAGE) $(COMPUTE_PCRS_IMAGE) $(REG_SERVER_IMAGE)
 	$(KUBECTL) apply -f manifests/operator.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_crd.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_cr.yaml
 	$(KUBECTL) apply -f kind/register-forward.yaml
+	$(KUBECTL) apply -f kind/kbs-forward.yaml
 
 clean:
 	cargo clean
