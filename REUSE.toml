@@ -10,7 +10,8 @@ path = [
   "operator/src/resource.rego",
   "operator/src/tpm.rego",
   "docs/pics/*",
-  "docs/design/*"
+  "docs/design/*",
+  "tests/README.md"
 ]
 SPDX-FileCopyrightText = [
     "Alice Frosi <afrosi@redhat.com>",
