@@ -64,10 +64,6 @@ pub struct Args {
     )]
     register_server_image: String,
 
-    /// Address where Trustee (kbs-service) is reachable
-    #[arg(long)]
-    trustee_addr: String,
-
     /// Register server port
     #[arg(long, default_value_t = 8000)]
     register_server_port: i32,
@@ -348,8 +344,8 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
             trustee_image: args.trustee_image.clone(),
             pcrs_compute_image: args.pcrs_compute_image.clone(),
             register_server_image: args.register_server_image.clone(),
-            trustee_addr: args.trustee_addr.clone(),
             register_server_port: args.register_server_port,
+            trustee_addr: None,
         },
     };
 

@@ -34,16 +34,12 @@ manifests-dir:
 	mkdir -p manifests
 
 manifests: tools
-ifndef TRUSTEE_ADDR
-	$(error TRUSTEE_ADDR is undefined)
-endif
 	target/debug/manifest-gen --output-dir manifests \
 		--namespace $(NAMESPACE) \
 		--image $(OPERATOR_IMAGE) \
 		--trustee-image $(TRUSTEE_IMAGE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
 		--register-server-image $(REG_SERVER_IMAGE) \
-		--trustee-addr $(TRUSTEE_ADDR):8080 \
 		--register-server-port 8000
 
 cluster-up:

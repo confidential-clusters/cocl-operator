@@ -101,9 +101,13 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    let mut split = cocl.spec.trustee_addr.split(":");
-    // TODO upgrade to 443 once supported
-    let kbs_port: i32 = split.nth(1).and_then(|s| s.parse().ok()).unwrap_or(80);
+    let kbs_port: i32 = cocl
+        .spec
+        .trustee_addr
+        .as_ref()
+        .and_then(|addr| addr.split(":").nth(1))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80);
     match trustee::generate_kbs_service(client.clone(), owner_reference.clone(), kbs_port).await {
         Ok(_) => info!("Generate the KBS service"),
         Err(e) => error!("Failed to create the KBS service: {e}"),
@@ -135,7 +139,7 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         client.clone(),
         owner_reference.clone(),
         &cocl.spec.register_server_image,
-        &cocl.spec.trustee_addr,
+        cocl.spec.trustee_addr.as_deref().unwrap_or(""),
     )
     .await
     {

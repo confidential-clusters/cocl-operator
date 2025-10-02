@@ -20,7 +20,7 @@ pub struct ConfidentialClusterSpec {
     pub trustee_image: String,
     pub pcrs_compute_image: String,
     pub register_server_image: String,
-    pub trustee_addr: String,
+    pub trustee_addr: Option<String>,
     pub register_server_port: i32,
 }
 
