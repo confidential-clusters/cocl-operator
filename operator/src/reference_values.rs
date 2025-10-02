@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use compute_pcrs_lib::Pcr;
 use futures_util::StreamExt;
@@ -14,7 +14,6 @@ use k8s_openapi::api::{
         PodTemplateSpec, Volume, VolumeMount,
     },
 };
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{DeleteParams, ObjectMeta, PostParams};
 use kube::runtime::{
     controller::{Action, Controller},
@@ -29,7 +28,9 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::trustee::{self, get_image_pcrs};
-use operator::{ControllerError, RvContextData, controller_error_policy, info_if_exists};
+use operator::{
+    ControllerError, RvContextData, controller_error_policy, controller_info, info_if_exists,
+};
 use rv_store::*;
 
 const JOB_LABEL_KEY: &str = "kind";
@@ -42,7 +43,7 @@ struct ComputePcrsOutput {
     pcrs: Vec<Pcr>,
 }
 
-pub async fn create_pcrs_config_map(client: Client) -> anyhow::Result<()> {
+pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
     let empty_data = BTreeMap::from([(
         PCR_CONFIG_FILE.to_string(),
         serde_json::to_string(&ImagePcrs::default())?,
@@ -64,7 +65,7 @@ pub async fn create_pcrs_config_map(client: Client) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fetch_pcr_label(image_ref: &str) -> anyhow::Result<Option<Vec<Pcr>>> {
+async fn fetch_pcr_label(image_ref: &str) -> Result<Option<Vec<Pcr>>> {
     let reference: oci_client::Reference = image_ref.parse()?;
     let client = oci_client::Client::new(Default::default());
     let (_, _, raw_config) = client
@@ -179,21 +180,11 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
     tokio::spawn(
         Controller::new(jobs, watcher)
             .run(job_reconcile, controller_error_policy, Arc::new(ctx))
-            .for_each(|res| async move {
-                match res {
-                    Ok(o) => info!("reconciled {o:?}"),
-                    Err(e) => info!("reconcile failed: {e:?}"),
-                }
-            }),
+            .for_each(controller_info),
     );
 }
 
-async fn compute_fresh_pcrs(
-    client: Client,
-    owner_reference: OwnerReference,
-    boot_image: &str,
-    pcrs_compute_image: &str,
-) -> anyhow::Result<()> {
+async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
     // Name job by sanitized image name, plus a hash to disambiguate
     // tags that differed only beyond the truncation limit
     let rfc1035_boot_image = boot_image.replace(['.', ':', '/', '@', '_'], "-");
@@ -203,7 +194,7 @@ async fn compute_fresh_pcrs(
     let mut job_name = format!("{PCR_COMMAND_NAME}-{boot_image_hash_str}-{rfc1035_boot_image}");
     job_name.truncate(63);
 
-    let pod_spec = build_compute_pcrs_pod_spec(boot_image, pcrs_compute_image);
+    let pod_spec = build_compute_pcrs_pod_spec(boot_image, &ctx.pcrs_compute_image);
     let job = Job {
         metadata: ObjectMeta {
             name: Some(job_name.clone()),
@@ -211,7 +202,7 @@ async fn compute_fresh_pcrs(
                 JOB_LABEL_KEY.to_string(),
                 PCR_COMMAND_NAME.to_string(),
             )])),
-            owner_references: Some(vec![owner_reference]),
+            owner_references: Some(vec![ctx.owner_reference]),
             ..Default::default()
         },
         spec: Some(JobSpec {
@@ -224,13 +215,13 @@ async fn compute_fresh_pcrs(
         ..Default::default()
     };
 
-    let jobs: Api<Job> = Api::default_namespaced(client);
+    let jobs: Api<Job> = Api::default_namespaced(ctx.client);
     let create = jobs.create(&PostParams::default(), &job).await;
     info_if_exists!(create, "Job", job_name);
     Ok(())
 }
 
-pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
+pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
@@ -239,10 +230,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
     }
     let label = fetch_pcr_label(boot_image).await?;
     if label.is_none() {
-        let client = ctx.client.clone();
-        let owner = ctx.owner_reference.clone();
-        let comp_img = &ctx.pcrs_compute_image;
-        return compute_fresh_pcrs(client, owner, boot_image, comp_img).await;
+        return compute_fresh_pcrs(ctx, boot_image).await;
     }
 
     let image_pcr = ImagePcr {
@@ -263,7 +251,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> anyhow::R
 }
 
 #[allow(dead_code)]
-pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
+pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;

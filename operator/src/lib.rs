@@ -10,7 +10,9 @@
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::{Client, runtime::controller::Action};
-use std::{fmt::Display, sync::Arc, time::Duration};
+use log::info;
+use std::fmt::{Debug, Display};
+use std::{sync::Arc, time::Duration};
 
 #[derive(Clone)]
 pub struct RvContextData {
@@ -28,6 +30,13 @@ pub enum ControllerError {
 pub fn controller_error_policy<R, E: Display, C>(_obj: Arc<R>, error: &E, _ctx: Arc<C>) -> Action {
     log::error!("{error}");
     Action::requeue(Duration::from_secs(60))
+}
+
+pub async fn controller_info<T: Debug, E: Debug>(res: Result<T, E>) {
+    match res {
+        Ok(o) => info!("reconciled {o:?}"),
+        Err(e) => info!("reconcile failed: {e:?}"),
+    }
 }
 
 #[macro_export]
