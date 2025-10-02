@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Yalan Zhang <yalzhang@redhat.com>
 # SPDX-FileCopyrightText: Timothée Ravier <tim@siosm.fr>
+# SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
 #
 # SPDX-License-Identifier: CC0-1.0
 
@@ -120,3 +121,44 @@ jobs:
         run: cargo build --lib
       - name: "cargo test"
         run: cargo test --lib
+  integration-tests:
+    name: "Integration tests"
+    runs-on: "ubuntu-24.04"
+    env:
+      - REGISTRY: "localhost:5000"
+    steps:
+      - name: "Check out repository"
+        uses: actions/checkout@v5
+      - name: "Install Podman"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          sudo systemctl start podman
+          sudo systemctl enable podman
+      - name: "Install kubectl"
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+      - name: "Install kind"
+        run: |
+          curl -Lo ./kind.bin https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+          chmod +x ./kind.bin
+          sudo mv ./kind.bin /usr/local/bin/kind
+      - name: "Install toolchain"
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: "Cache build artifacts"
+        uses: Swatinem/rust-cache@v2
+      - name: "Setup cluster"
+        run: make cluster-up
+      - name: "Build and push images"
+        run: make push
+      - name: "Create the manifests"
+        run: make manifests
+      # Delete this when we deploy our Trustee
+      - name: "Create operators namespace"
+        run: kubectl create namespace operators
+      - name: "Run integration tests"
+        run: make integration-tests
