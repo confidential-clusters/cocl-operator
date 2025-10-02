@@ -8,7 +8,8 @@ path = [
   "operator/src/kbs-config.toml",
   "operator/src/resource.rego",
   "operator/src/rvps-config.json",
-  "operator/src/tpm.rego"
+  "operator/src/tpm.rego",
+  "tests/README.md"
 ]
 SPDX-FileCopyrightText = [
     "Alice Frosi <afrosi@redhat.com>",
