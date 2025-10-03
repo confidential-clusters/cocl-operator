@@ -16,7 +16,7 @@ use log::{error, info};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use uuid::Uuid;
-use warp::Filter;
+use warp::{http::StatusCode, reply, Filter};
 
 #[derive(Parser)]
 #[command(name = "register-server")]
@@ -89,18 +89,28 @@ async fn register_handler(
 
     info!("Registration request from IP: {client_ip}");
 
+    let internal_error = |e: anyhow::Error| {
+        let code = StatusCode::INTERNAL_SERVER_ERROR;
+        error!("{e}");
+        let msg = serde_json::json!({
+            "code": code.as_u16(),
+            "message": e.to_string(),
+        });
+        Ok(reply::with_status(reply::json(&msg), code))
+    };
+
     match create_machine(&id, &client_ip).await {
         Ok(_) => info!("Machine created successfully: machine-{id}"),
-        Err(e) => error!("Failed to create Machine: {e}"),
+        Err(e) => return internal_error(e.context("Failed to create machine")),
     }
 
-    Ok(warp::reply::json(&generate_ignition(&id, &public_addr)))
+    Ok(reply::with_status(
+        reply::json(&generate_ignition(&id, &public_addr)),
+        StatusCode::OK,
+    ))
 }
 
-async fn create_machine(
-    uuid: &str,
-    client_ip: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn create_machine(uuid: &str, client_ip: &str) -> anyhow::Result<()> {
     let client = Client::try_default().await?;
     let machines: Api<Machine> = Api::default_namespaced(client);
 
