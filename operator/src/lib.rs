@@ -9,6 +9,7 @@
 // Use in other crates is not an intended purpose.
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use kube::api::ObjectMeta;
 use kube::{Client, runtime::controller::Action};
 use log::info;
 use std::fmt::{Debug, Display};
@@ -37,6 +38,10 @@ pub async fn controller_info<T: Debug, E: Debug>(res: Result<T, E>) {
         Ok(o) => info!("reconciled {o:?}"),
         Err(e) => info!("reconcile failed: {e:?}"),
     }
+}
+
+pub fn name_or_default(meta: &ObjectMeta) -> String {
+    meta.name.clone().unwrap_or("<no name>".to_string())
 }
 
 #[macro_export]

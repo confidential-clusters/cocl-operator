@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use clap::Parser;
 use clevis_pin_trustee_lib::{Config as ClevisConfig, Server as ClevisServer};
 use crds::{ConfidentialCluster, Machine};
@@ -88,7 +88,12 @@ async fn get_public_trustee_addr(client: Client) -> anyhow::Result<String> {
              Cancelling Ignition Clevis PIN request.",
         ));
     }
-    Ok(list.items.pop().unwrap().spec.trustee_addr)
+    let cocl = list.items.pop().unwrap();
+    let name = cocl.metadata.name.as_deref().unwrap_or("<no name>");
+    cocl.spec.trustee_addr.context(format!(
+        "ConfidentialCluster {name} did not specify a Trustee address. \
+         Add an address and re-register the node."
+    ))
 }
 
 async fn register_handler(remote_addr: Option<SocketAddr>) -> Result<impl warp::Reply, Infallible> {

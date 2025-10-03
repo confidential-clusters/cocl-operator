@@ -45,9 +45,9 @@ $ ip=192.168.122.1
 
 ```bash
 make cluster-up
-make REGISTRY=localhost:5000 image push # optional: use BUILD_TYPE=debug
-make REGISTRY=localhost:5000 TRUSTEE_ADDR=$ip manifests
-make install
+make REGISTRY=localhost:5000 push # optional: use BUILD_TYPE=debug
+make REGISTRY=localhost:5000 manifests
+make TRUSTEE_ADDR=$ip install
 ```
 
 The KBS port will be forwarded to `8080` on your machine; the node register server to `8000`, where new Ignition configs are served at `/register`.
