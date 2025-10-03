@@ -16,9 +16,9 @@ COPY operator/Cargo.toml operator/
 COPY operator/src/lib.rs operator/src/
 
 # Set only required crates as members to minimize rebuilds upon changes.
-# In debug builds, build dependencies to avoid full rebuild.
+# Build dependencies in lower layer to make use of caching.
 RUN sed -i 's/members = .*/members = ["crds", "operator", "rv-store"]/' Cargo.toml && \
-    if [ "$build_type" = debug ]; then cargo build -p operator --lib; fi
+    cargo build -p operator --lib $(if [ "$build_type" = release ]; then echo --release; fi)
 
 # Target build stage
 COPY operator/src operator/src

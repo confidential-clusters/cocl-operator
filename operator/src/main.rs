@@ -31,7 +31,7 @@ async fn reconcile(
     cocl: Arc<ConfidentialCluster>,
     client: Arc<Client>,
 ) -> Result<Action, operator::ControllerError> {
-    let name = cocl.metadata.name.as_deref().unwrap_or("<no name>");
+    let name = operator::name_or_default(&cocl.metadata);
     if cocl.metadata.deletion_timestamp.is_some() {
         info!("Registered deletion of ConfidentialCluster {name}");
         return Ok(Action::await_change());
@@ -101,7 +101,10 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    let mut split = cocl.spec.trustee_addr.split(":");
+    let name = operator::name_or_default(&cocl.metadata);
+    let err = format!("ConfidentialCluster {name} did not specify a Trustee address");
+    let trustee_addr = cocl.spec.trustee_addr.clone().context(err)?;
+    let mut split = trustee_addr.split(":");
     // TODO upgrade to 443 once supported
     let kbs_port: i32 = split.nth(1).and_then(|s| s.parse().ok()).unwrap_or(80);
     match trustee::generate_kbs_service(client.clone(), owner_reference.clone(), kbs_port).await {
@@ -109,12 +112,7 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         Err(e) => error!("Failed to create the KBS service: {e}"),
     }
 
-    match trustee::generate_kbs_deployment(
-        client.clone(),
-        owner_reference.clone(),
-        &cocl.spec.trustee_image,
-    )
-    .await
+    match trustee::generate_kbs_deployment(client, owner_reference, &cocl.spec.trustee_image).await
     {
         Ok(_) => info!("Generate the KBS deployment"),
         Err(e) => error!("Failed to create the KBS deployment: {e}"),
@@ -135,7 +133,6 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         client.clone(),
         owner_reference.clone(),
         &cocl.spec.register_server_image,
-        &cocl.spec.trustee_addr,
     )
     .await
     {
@@ -143,12 +140,11 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         Err(e) => error!("Failed to create register server deployment: {e}"),
     }
 
-    match register_server::create_register_server_service(
-        client.clone(),
-        owner_reference,
-        cocl.spec.register_server_port,
-    )
-    .await
+    let name = operator::name_or_default(&cocl.metadata);
+    let err = format!("ConfidentialCluster {name} did not specify a register server port");
+    let port = cocl.spec.register_server_port.context(err)?;
+    match register_server::create_register_server_service(client.clone(), owner_reference, port)
+        .await
     {
         Ok(_) => info!("Register server service created/updated successfully"),
         Err(e) => error!("Failed to create register server service: {e}"),
@@ -165,11 +161,11 @@ async fn main() -> Result<()> {
 
     let kube_client = Client::try_default().await?;
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::default_namespaced(kube_client.clone());
+    let cl: Api<ConfidentialCluster> = Api::default_namespaced(kube_client.clone());
 
     let client = Arc::new(kube_client);
     Controller::new(cl, watcher::Config::default())
-        .run::<_, Client>(reconcile, operator::controller_error_policy, client)
+        .run(reconcile, operator::controller_error_policy, client)
         .for_each(operator::controller_info)
         .await;
 

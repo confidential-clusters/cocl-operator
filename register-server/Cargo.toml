@@ -9,6 +9,7 @@ edition = "2021"
 rust-version.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
 clevis-pin-trustee-lib.workspace = true
 crds = { path = "../crds" }

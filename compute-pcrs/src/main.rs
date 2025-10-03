@@ -8,7 +8,7 @@ use chrono::Utc;
 use clap::Parser;
 use compute_pcrs_lib::*;
 use k8s_openapi::api::core::v1::ConfigMap;
-use kube::{Api, Client, api::PostParams};
+use kube::{Api, Client};
 use std::collections::BTreeMap;
 
 use rv_store::*;
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
     image_pcrs_map.data = Some(data);
     config_maps
-        .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
+        .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
         .await?;
     Ok(())
 }

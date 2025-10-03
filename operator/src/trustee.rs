@@ -18,7 +18,7 @@ use k8s_openapi::apimachinery::pkg::{
     apis::meta::v1::{LabelSelector, OwnerReference},
     util::intstr::IntOrString,
 };
-use kube::api::{ObjectMeta, Patch, PatchParams, PostParams};
+use kube::api::{ObjectMeta, Patch};
 use kube::{Api, Client};
 use log::info;
 use operator::{RvContextData, info_if_exists};
@@ -58,12 +58,10 @@ struct ReferenceValue {
 }
 
 pub fn get_image_pcrs(image_pcrs_map: ConfigMap) -> Result<ImagePcrs> {
-    let image_pcrs_data = image_pcrs_map
-        .data
-        .context("Image PCRs map existed, but had no data")?;
-    let image_pcrs_str = image_pcrs_data
-        .get(PCR_CONFIG_FILE)
-        .context("Image PCRs data existed, but had no file")?;
+    let err = "Image PCRs map existed, but had no data";
+    let image_pcrs_data = image_pcrs_map.data.context(err)?;
+    let err = "Image PCRs data existed, but had no file";
+    let image_pcrs_str = image_pcrs_data.get(PCR_CONFIG_FILE).context(err)?;
     serde_json::from_str(image_pcrs_str).map_err(Into::into)
 }
 
@@ -110,8 +108,8 @@ pub async fn update_reference_values(ctx: RvContextData) -> Result<()> {
         value: JsonString(serde_json::to_string(&reference_values)?),
     });
     let patch: Patch<ConfigMap> = Patch::Json(json_patch::Patch(vec![test_patch, add_patch]));
-    let params = PatchParams::default();
-    config_maps.patch(TRUSTEE_DATA_MAP, &params, &patch).await?;
+    let params = &Default::default();
+    config_maps.patch(TRUSTEE_DATA_MAP, params, &patch).await?;
     info!("Recomputed reference values");
     Ok(())
 }
@@ -162,7 +160,7 @@ async fn mount_secret(client: Client, id: &str) -> Result<()> {
     vol_mounts.push(volume_mount);
 
     deployments
-        .replace(DEPLOYMENT_NAME, &PostParams::default(), &deployment)
+        .replace(DEPLOYMENT_NAME, &Default::default(), &deployment)
         .await?;
     info!("Mounted secret {id} to {DEPLOYMENT_NAME}");
     Ok(())
@@ -182,7 +180,7 @@ pub async fn generate_secret(client: Client, id: &str) -> Result<()> {
     };
 
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
-    let create = secrets.create(&PostParams::default(), &secret).await;
+    let create = secrets.create(&Default::default(), &secret).await;
     info_if_exists!(create, "Secret", id);
     mount_secret(client, id).await
 }
@@ -208,9 +206,8 @@ pub async fn generate_attestation_policy(
         ..Default::default()
     };
 
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(client.clone());
-    let params = &PostParams::default();
-    let create = config_maps.create(params, &config_map).await;
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
+    let create = config_maps.create(&Default::default(), &config_map).await;
     info_if_exists!(create, "ConfigMap", ATT_POLICY_MAP);
 
     Ok(())
@@ -236,9 +233,8 @@ pub async fn generate_trustee_data(client: Client, owner_reference: OwnerReferen
         ..Default::default()
     };
 
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(client.clone());
-    let params = &PostParams::default();
-    let create = config_maps.create(params, &config_map).await;
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
+    let create = config_maps.create(&Default::default(), &config_map).await;
     info_if_exists!(create, "ConfigMap", TRUSTEE_DATA_MAP);
 
     Ok(())
@@ -271,8 +267,8 @@ pub async fn generate_kbs_service(
         ..Default::default()
     };
 
-    let services: Api<Service> = Api::default_namespaced(client.clone());
-    let create = services.create(&PostParams::default(), &service).await;
+    let services: Api<Service> = Api::default_namespaced(client);
+    let create = services.create(&Default::default(), &service).await;
     info_if_exists!(create, "Service", svc_name);
 
     Ok(())
@@ -390,8 +386,7 @@ pub async fn generate_kbs_deployment(
     };
 
     let deployments: Api<Deployment> = Api::default_namespaced(client);
-    let params = &PostParams::default();
-    let create = deployments.create(params, &deployment).await;
+    let create = deployments.create(&Default::default(), &deployment).await;
     info_if_exists!(create, "Deployment", DEPLOYMENT_NAME);
 
     Ok(())

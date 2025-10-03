@@ -14,10 +14,10 @@ COPY compute-pcrs/Cargo.toml compute-pcrs/
 COPY compute-pcrs/src/lib.rs compute-pcrs/src/
 
 # Set only required crates as members to minimize rebuilds upon changes.
-# In debug builds, build dependencies to avoid full rebuild.
+# Build dependencies in lower layer to make use of caching.
 RUN sed -i 's/members =.*/members = ["compute-pcrs", "rv-store"]/' Cargo.toml && \
     git clone --depth 1 https://github.com/confidential-clusters/reference-values && \
-    if [ "$build_type" = debug ]; then cargo build -p compute-pcrs --lib; fi
+    cargo build -p compute-pcrs --lib $(if [ "$build_type" = release ]; then echo --release; fi)
 
 COPY compute-pcrs/src compute-pcrs/src
 RUN cargo build -p compute-pcrs $(if [ "$build_type" = release ]; then echo --release; fi)
