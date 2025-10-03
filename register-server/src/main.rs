@@ -3,9 +3,10 @@
 //
 // SPDX-License-Identifier: MIT
 
+use anyhow::anyhow;
 use clap::Parser;
 use clevis_pin_trustee_lib::{Config as ClevisConfig, Server as ClevisServer};
-use crds::Machine;
+use crds::{ConfidentialCluster, Machine};
 use env_logger::Env;
 use ignition_config::v3_5::{
     Clevis, ClevisCustom, Config as IgnitionConfig, Filesystem, Luks, Storage,
@@ -24,9 +25,6 @@ use warp::{http::StatusCode, reply, Filter};
 struct Args {
     #[arg(short, long, default_value = "8000")]
     port: u16,
-
-    #[arg(long)]
-    public_addr: String,
 }
 
 fn generate_ignition(id: &str, public_addr: &str) -> IgnitionConfig {
@@ -78,10 +76,22 @@ fn generate_ignition(id: &str, public_addr: &str) -> IgnitionConfig {
     }
 }
 
-async fn register_handler(
-    remote_addr: Option<SocketAddr>,
-    public_addr: String,
-) -> Result<impl warp::Reply, Infallible> {
+async fn get_public_trustee_addr(client: Client) -> anyhow::Result<String> {
+    let namespace = client.default_namespace().to_string();
+    let cocls: Api<ConfidentialCluster> = Api::default_namespaced(client);
+    let params = Default::default();
+    let mut list = cocls.list(&params).await?;
+    if list.items.len() != 1 {
+        return Err(anyhow!(
+            "More than one ConfidentialCluster found in namespace {namespace}. \
+             cocl-operator does not support more than one ConfidentialCluster. \
+             Cancelling Ignition Clevis PIN request.",
+        ));
+    }
+    Ok(list.items.pop().unwrap().spec.trustee_addr)
+}
+
+async fn register_handler(remote_addr: Option<SocketAddr>) -> Result<impl warp::Reply, Infallible> {
     let id = Uuid::new_v4().to_string();
     let client_ip = remote_addr
         .map(|addr| addr.ip().to_string())
@@ -91,18 +101,26 @@ async fn register_handler(
 
     let internal_error = |e: anyhow::Error| {
         let code = StatusCode::INTERNAL_SERVER_ERROR;
-        error!("{e}");
+        error!("{e:?}");
         let msg = serde_json::json!({
             "code": code.as_u16(),
-            "message": e.to_string(),
+            "message": format!("{e:#}")
         });
         Ok(reply::with_status(reply::json(&msg), code))
     };
 
-    match create_machine(&id, &client_ip).await {
+    let kube_client = match Client::try_default().await {
+        Ok(c) => c,
+        Err(e) => return internal_error(e.into()),
+    };
+    match create_machine(kube_client.clone(), &id, &client_ip).await {
         Ok(_) => info!("Machine created successfully: machine-{id}"),
         Err(e) => return internal_error(e.context("Failed to create machine")),
     }
+    let public_addr = match get_public_trustee_addr(kube_client).await {
+        Ok(a) => a,
+        Err(e) => return internal_error(e.context("Failed to get Trustee address")),
+    };
 
     Ok(reply::with_status(
         reply::json(&generate_ignition(&id, &public_addr)),
@@ -110,8 +128,7 @@ async fn register_handler(
     ))
 }
 
-async fn create_machine(uuid: &str, client_ip: &str) -> anyhow::Result<()> {
-    let client = Client::try_default().await?;
+async fn create_machine(client: Client, uuid: &str, client_ip: &str) -> anyhow::Result<()> {
     let machines: Api<Machine> = Api::default_namespaced(client);
 
     // Check for existing machines with the same IP
@@ -153,7 +170,6 @@ async fn main() {
     let register_route = warp::path("ignition-clevis-pin-trustee")
         .and(warp::get())
         .and(warp::addr::remote())
-        .and(warp::any().map(move || args.public_addr.clone()))
         .and_then(register_handler);
 
     let routes = register_route;

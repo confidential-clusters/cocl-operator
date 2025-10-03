@@ -130,7 +130,6 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         client.clone(),
         owner_reference.clone(),
         &cocl.spec.register_server_image,
-        &cocl.spec.trustee_addr,
     )
     .await
     {
