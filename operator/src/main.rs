@@ -109,12 +109,7 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         Err(e) => error!("Failed to create the KBS service: {e}"),
     }
 
-    match trustee::generate_kbs_deployment(
-        client.clone(),
-        owner_reference.clone(),
-        &cocl.spec.trustee_image,
-    )
-    .await
+    match trustee::generate_kbs_deployment(client, owner_reference, &cocl.spec.trustee_image).await
     {
         Ok(_) => info!("Generate the KBS deployment"),
         Err(e) => error!("Failed to create the KBS deployment: {e}"),
@@ -165,11 +160,11 @@ async fn main() -> Result<()> {
 
     let kube_client = Client::try_default().await?;
     info!("Confidential clusters operator",);
-    let cl = Api::<ConfidentialCluster>::default_namespaced(kube_client.clone());
+    let cl: Api<ConfidentialCluster> = Api::default_namespaced(kube_client.clone());
 
     let client = Arc::new(kube_client);
     Controller::new(cl, watcher::Config::default())
-        .run::<_, Client>(reconcile, operator::controller_error_policy, client)
+        .run(reconcile, operator::controller_error_policy, client)
         .for_each(operator::controller_info)
         .await;
 

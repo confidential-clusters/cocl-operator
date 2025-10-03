@@ -11,7 +11,7 @@ use ignition_config::v3_5::{
     Clevis, ClevisCustom, Config as IgnitionConfig, Filesystem, Luks, Storage,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::{api::ListParams, Api, Client};
+use kube::{Api, Client};
 use log::{error, info};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -105,8 +105,7 @@ async fn create_machine(
     let machines: Api<Machine> = Api::default_namespaced(client);
 
     // Check for existing machines with the same IP
-    let list_params = ListParams::default();
-    let machine_list = machines.list(&list_params).await?;
+    let machine_list = machines.list(&Default::default()).await?;
 
     for existing_machine in machine_list.items {
         if existing_machine.spec.address == client_ip {

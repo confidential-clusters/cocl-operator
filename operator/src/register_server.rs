@@ -109,7 +109,7 @@ pub async fn create_register_server_rbac(client: Client) -> Result<()> {
         }]),
     };
 
-    let rb_api: Api<RoleBinding> = Api::default_namespaced(client.clone());
+    let rb_api: Api<RoleBinding> = Api::default_namespaced(client);
     let rb_name = format!("{name}-rolebinding");
     match rb_api.get(&rb_name).await {
         Ok(_) => {
@@ -183,7 +183,7 @@ pub async fn create_register_server_deployment(
         ..Default::default()
     };
 
-    let api: Api<Deployment> = Api::default_namespaced(client.clone());
+    let api: Api<Deployment> = Api::default_namespaced(client);
 
     match api.get(name).await {
         Ok(_) => {
@@ -231,7 +231,7 @@ pub async fn create_register_server_service(
         ..Default::default()
     };
 
-    let api: Api<Service> = Api::default_namespaced(client.clone());
+    let api: Api<Service> = Api::default_namespaced(client);
 
     match api.get(name).await {
         Ok(_) => {
