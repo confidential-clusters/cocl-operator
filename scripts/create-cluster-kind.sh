@@ -7,7 +7,7 @@
 
 set -xo errexit
 
-source scripts/common.sh
+. scripts/common.sh
 
 if [ "$(kind get clusters 2>/dev/null)" != "kind" ]; then
 	kind create cluster --config kind/config.yaml
