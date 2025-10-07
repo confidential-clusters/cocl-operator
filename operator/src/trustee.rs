@@ -87,11 +87,10 @@ fn recompute_reference_values(image_pcrs: ImagePcrs) -> Vec<ReferenceValue> {
 }
 
 pub async fn update_reference_values(ctx: RvContextData) -> Result<()> {
-    let operator_config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
-    let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client);
+    let image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let reference_values = recompute_reference_values(get_image_pcrs(image_pcrs_map)?);
 
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client);
     let existing_data = config_maps.get(TRUSTEE_DATA_MAP).await?;
     let err = format!("ConfigMap {TRUSTEE_DATA_MAP} existed, but had no data");
     let existing_data_map = existing_data.data.context(err)?;
