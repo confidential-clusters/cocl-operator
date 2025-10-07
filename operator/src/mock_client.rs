@@ -28,29 +28,30 @@ macro_rules! assert_kube_api_error {
 
 pub(crate) use assert_kube_api_error;
 
-pub struct MockClient<T>
+pub struct MockClient<F, T>
 where
-    T: Serialize + for<'de> Deserialize<'de>,
+    F: Fn(&Option<Request<Body>>) -> Result<T, StatusCode> + Send + 'static,
+    T: Default + Serialize + for<'de> Deserialize<'de>,
 {
-    response_data: T,
-    status_code: StatusCode,
+    response_closure: F,
     namespace: String,
 }
 
-impl<T> MockClient<T>
+impl<F, T> MockClient<F, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
+    F: Fn(&Option<Request<Body>>) -> Result<T, StatusCode> + Send + 'static,
+    T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
 {
-    pub fn new(status_code: StatusCode, response_data: T, namespace: String) -> Self {
+    pub fn new(response_closure: F, namespace: String) -> Self {
         Self {
-            response_data,
-            status_code,
+            response_closure,
             namespace,
         }
     }
 
     pub fn into_client(self) -> Client {
-        let response_json = serde_json::to_string(&self.response_data).unwrap();
+        let response_data = (self.response_closure)(&None).unwrap_or_default();
+        let response_json = serde_json::to_string(&response_data).unwrap();
         let (kind, name) = serde_json::from_str::<serde_json::Value>(&response_json)
             .map(|json_value| {
                 let kind = json_value
@@ -70,13 +71,16 @@ where
         let plural = kind.to_lowercase() + "s";
         let namespace = self.namespace.clone();
 
-        let mock_svc = service_fn(move |_req: Request<Body>| {
-            let body = if self.status_code == StatusCode::OK {
-                let response_json = serde_json::to_string(&self.response_data).unwrap();
+        let mock_svc = service_fn(move |req: Request<Body>| {
+            let mut status_code = StatusCode::OK;
+            let response = (self.response_closure)(&Some(req));
+            let body = if let Ok(response_data) = response {
+                let response_json = serde_json::to_string(&response_data).unwrap();
                 Body::from(response_json.into_bytes())
             } else {
-                let code = self.status_code.as_u16();
-                let error_response = match self.status_code {
+                status_code = response.err().unwrap();
+                let code = status_code.as_u16();
+                let error_response = match status_code {
                     StatusCode::CONFLICT => ErrorResponse {
                         status: "Failure".to_string(),
                         message: format!("{plural} \"{name}\" already exists"),
@@ -103,7 +107,7 @@ where
                     },
                     _ => ErrorResponse {
                         status: "Failure".to_string(),
-                        message: format!("error with status code {}", self.status_code),
+                        message: format!("error with status code {status_code}"),
                         reason: "Unknown".to_string(),
                         code,
                     },
@@ -112,10 +116,7 @@ where
                 Body::from(error_json.into_bytes())
             };
 
-            let response = Response::builder()
-                .status(self.status_code)
-                .body(body)
-                .unwrap();
+            let response = Response::builder().status(status_code).body(body).unwrap();
             async move { Ok::<_, Infallible>(response) }
         });
         Client::new(mock_svc, namespace)

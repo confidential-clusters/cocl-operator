@@ -397,7 +397,7 @@ mod tests {
     use super::*;
     use crate::mock_client::*;
     use compute_pcrs_lib::Pcr;
-    use http::StatusCode;
+    use http::{Method, Request, StatusCode};
 
     #[test]
     fn test_get_image_pcrs_success() {
@@ -467,33 +467,37 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_att_policy_success() {
-        let ns = "test".to_string();
-        let client = MockClient::new(StatusCode::OK, ConfigMap::default(), ns).into_client();
+        let clos = |_: &_| Ok(ConfigMap::default());
+        let client = MockClient::new(clos, "test".to_string()).into_client();
         let result = generate_attestation_policy(client, Default::default()).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_generate_att_policy_already_exists() {
-        let ns = "test".to_string();
-        let client = MockClient::new(StatusCode::CONFLICT, ConfigMap::default(), ns).into_client();
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.method() == Method::POST => Err::<ConfigMap, _>(StatusCode::CONFLICT),
+            None => Ok(ConfigMap::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
         let result = generate_attestation_policy(client, Default::default()).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_generate_att_policy_error() {
-        let ns = "test".to_string();
-        let config = ConfigMap::default();
-        let client = MockClient::new(StatusCode::INTERNAL_SERVER_ERROR, config, ns).into_client();
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.method() == Method::POST => {
+                Err::<ConfigMap, _>(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+            None => Ok(ConfigMap::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
         let result = generate_attestation_policy(client, Default::default()).await;
         let err = result.unwrap_err();
-        assert_kube_api_error!(
-            err,
-            500,
-            "ServerTimeout",
-            "internal server error",
-            "Failure"
-        );
+        let msg = "internal server error";
+        assert_kube_api_error!(err, 500, "ServerTimeout", msg, "Failure");
     }
 }
