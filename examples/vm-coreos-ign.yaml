@@ -82,5 +82,5 @@ spec:
       volumes:
       - name: containerdisk
         containerDisk:
-          image: "localhost:5000/fedora-coreos:clevis-pin"
+          image: "quay.io/confidential-clusters/fedora-coreos-kubevirt:latest"
           imagePullPolicy: Always

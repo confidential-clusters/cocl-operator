@@ -44,6 +44,12 @@ manifests: tools
 cluster-up:
 	./scripts/create-cluster-kind.sh
 
+cluster-cleanup:
+	$(KUBECTL) delete -f manifests/confidential_cluster_cr.yaml
+	$(KUBECTL) delete -f manifests/confidential_cluster_crd.yaml
+	$(KUBECTL) delete -f manifests/operator.yaml
+
+
 cluster-down:
 	./scripts/delete-cluster-kind.sh
 
@@ -73,6 +79,8 @@ endif
 	$(KUBECTL) patch confidentialcluster confidential-cluster -n confidential-clusters --type='merge' -p \
 '{"spec":{"trusteeAddr":"kbs-service.confidential-clusters.svc.cluster.local:80"}}'
 
+install-kubevirt:
+	scripts/install-kubevirt.sh
 
 clean:
 	cargo clean
