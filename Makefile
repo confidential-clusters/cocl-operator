@@ -71,6 +71,12 @@ manifests: cocl-gen
 cluster-up:
 	scripts/create-cluster-kind.sh
 
+cluster-cleanup:
+	$(KUBECTL) delete -f manifests/confidential_cluster_cr.yaml
+	$(KUBECTL) delete -f manifests/confidential_cluster_crd.yaml
+	$(KUBECTL) delete -f manifests/operator.yaml
+
+
 cluster-down:
 	scripts/delete-cluster-kind.sh
 
@@ -99,6 +105,9 @@ endif
 	$(KUBECTL) apply -f $(DEPLOY_PATH)/confidential_cluster_cr.yaml
 	$(KUBECTL) apply -f kind/register-forward.yaml
 	$(KUBECTL) apply -f kind/kbs-forward.yaml
+
+install-kubevirt:
+	scripts/install-kubevirt.sh
 
 clean:
 	cargo clean
