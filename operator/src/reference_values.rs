@@ -10,7 +10,7 @@ use futures_util::StreamExt;
 use k8s_openapi::api::{
     batch::v1::{Job, JobSpec},
     core::v1::{
-        ConfigMap, ConfigMapVolumeSource, Container, ImageVolumeSource, KeyToPath, PodSpec,
+        ConfigMap, ConfigMapVolumeSource, Container, EnvVar, ImageVolumeSource, KeyToPath, PodSpec,
         PodTemplateSpec, Volume, VolumeMount,
     },
 };
@@ -122,6 +122,12 @@ fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> Po
                     ..Default::default()
                 },
             ]),
+            env: Some(vec![EnvVar {
+                name: "RUST_BACKTRACE".to_string(),
+                value: Some("1".to_string()),
+                value_from: None,
+            }]),
+
             ..Default::default()
         }],
         volumes: Some(vec![
