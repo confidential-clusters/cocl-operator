@@ -58,7 +58,7 @@ push: image
 	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
 	podman push $(REG_SERVER_IMAGE) --tls-verify=false
 
-install:
+install-kind:
 ifndef TRUSTEE_ADDR
 	$(error TRUSTEE_ADDR is undefined)
 endif
@@ -70,6 +70,9 @@ endif
 	$(KUBECTL) apply -f manifests/confidential_cluster_cr.yaml
 	$(KUBECTL) apply -f kind/register-forward.yaml
 	$(KUBECTL) apply -f kind/kbs-forward.yaml
+	$(KUBECTL) patch confidentialcluster confidential-cluster -n confidential-clusters --type='merge' -p \
+'{"spec":{"trusteeAddr":"kbs-service.confidential-clusters.svc.cluster.local:80"}}'
+
 
 clean:
 	cargo clean
