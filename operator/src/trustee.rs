@@ -559,6 +559,72 @@ mod tests {
         assert_eq!(jwk.key.len(), 32);
     }
 
+    fn dummy_deployment() -> Deployment {
+        Deployment {
+            spec: Some(DeploymentSpec {
+                template: PodTemplateSpec {
+                    spec: Some(PodSpec {
+                        containers: vec![Container::default()],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_success() {
+        let clos = |_: &_| Ok(dummy_deployment());
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(mount_secret(client, "id").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_depl() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(DEPLOYMENT_NAME) && r.method() == Method::GET => {
+                Err::<Deployment, _>(StatusCode::NOT_FOUND)
+            }
+            None => Ok(Deployment::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(mount_secret(client, "id").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_spec() {
+        let mut depl = dummy_deployment();
+        depl.spec = None;
+        let client = MockClient::new(move |_| Ok(depl.clone()), "test".to_string()).into_client();
+        let err = mount_secret(client, "id").await.err().unwrap();
+        assert!(err.to_string().contains("but had no spec"));
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_pod_spec() {
+        let mut depl = dummy_deployment();
+        let spec = depl.spec.as_mut().unwrap();
+        spec.template.spec = None;
+        let client = MockClient::new(move |_| Ok(depl.clone()), "test".to_string()).into_client();
+        let err = mount_secret(client, "id").await.err().unwrap();
+        assert!(err.to_string().contains("but had no pod spec"));
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_containers() {
+        let mut depl = dummy_deployment();
+        let spec = depl.spec.as_mut().unwrap();
+        let pod_spec = spec.template.spec.as_mut().unwrap();
+        pod_spec.containers = vec![];
+        let client = MockClient::new(move |_| Ok(depl.clone()), "test".to_string()).into_client();
+        let err = mount_secret(client, "id").await.err().unwrap();
+        assert!(err.to_string().contains("but had no containers"));
+    }
+
     async fn test_create_success<
         F: Fn(Client) -> S,
         S: Future<Output = Result<()>>,
