@@ -143,7 +143,7 @@ fn generate_secret_volume(id: &str) -> (Volume, VolumeMount) {
     )
 }
 
-async fn mount_secret(client: Client, id: &str) -> Result<()> {
+pub async fn mount_secret(client: Client, id: &str) -> Result<()> {
     let deployments: Api<Deployment> = Api::default_namespaced(client);
     let mut deployment = deployments.get(DEPLOYMENT_NAME).await?;
     let err = format!("Deployment {DEPLOYMENT_NAME} existed, but had no spec");
@@ -181,7 +181,7 @@ pub async fn generate_secret(client: Client, id: &str) -> Result<()> {
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
     let create = secrets.create(&Default::default(), &secret).await;
     info_if_exists!(create, "Secret", id);
-    mount_secret(client, id).await
+    Ok(())
 }
 
 pub async fn generate_attestation_policy(
