@@ -24,7 +24,7 @@ k8s-openapi.workspace = true
 kube.workspace = true
 log.workspace = true
 oci-client = "0.15.0"
-oci-spec = "0.8.2"
+oci-spec = "0.8.3"
 openssl = "0.10.73"
 rv-store = { path = "../rv-store" }
 serde.workspace = true
