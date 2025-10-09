@@ -612,4 +612,76 @@ mod tests {
         let clos = |client| generate_attestation_policy(client, Default::default());
         test_create_error::<_, _, ConfigMap>(clos).await;
     }
+
+    #[tokio::test]
+    async fn test_generate_secret_success() {
+        let clos = |client| generate_secret(client, "id");
+        test_create_success::<_, _, Secret>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_already_exists() {
+        let clos = |client| generate_secret(client, "id");
+        test_create_already_exists::<_, _, Secret>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_error() {
+        let clos = |client| generate_secret(client, "id");
+        test_create_error::<_, _, Secret>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_trustee_data_success() {
+        let clos = |client| generate_trustee_data(client, Default::default());
+        test_create_success::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_trustee_data_already_exists() {
+        let clos = |client| generate_trustee_data(client, Default::default());
+        test_create_already_exists::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_trustee_data_error() {
+        let clos = |client| generate_trustee_data(client, Default::default());
+        test_create_error::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_service_success() {
+        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        test_create_success::<_, _, Service>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_service_already_exists() {
+        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        test_create_already_exists::<_, _, Service>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_service_error() {
+        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        test_create_error::<_, _, Service>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_depl_success() {
+        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
+        test_create_success::<_, _, Deployment>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_depl_already_exists() {
+        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
+        test_create_already_exists::<_, _, Deployment>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_depl_error() {
+        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
+        test_create_error::<_, _, Deployment>(clos).await;
+    }
 }
