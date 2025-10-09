@@ -399,9 +399,8 @@ mod tests {
     use compute_pcrs_lib::Pcr;
     use http::{Method, Request, StatusCode};
 
-    #[test]
-    fn test_get_image_pcrs_success() {
-        let pcrs = BTreeMap::from([(
+    fn dummy_pcrs() -> ImagePcrs {
+        ImagePcrs(BTreeMap::from([(
             "cos".to_string(),
             ImagePcr {
                 first_seen: Utc::now(),
@@ -418,15 +417,23 @@ mod tests {
                     },
                 ],
             },
-        )]);
+        )]))
+    }
+
+    fn dummy_pcrs_map() -> ConfigMap {
         let data = BTreeMap::from([(
             PCR_CONFIG_FILE.to_string(),
-            serde_json::to_string(&pcrs).unwrap(),
+            serde_json::to_string(&dummy_pcrs()).unwrap(),
         )]);
-        let config_map = ConfigMap {
+        ConfigMap {
             data: Some(data),
             ..Default::default()
-        };
+        }
+    }
+
+    #[test]
+    fn test_get_image_pcrs_success() {
+        let config_map = dummy_pcrs_map();
         let image_pcrs = get_image_pcrs(config_map).unwrap();
         assert_eq!(image_pcrs.0["cos"].pcrs.len(), 2);
         assert_eq!(image_pcrs.0["cos"].pcrs[0].value, "pcr0_val");
@@ -457,6 +464,82 @@ mod tests {
             ..Default::default()
         };
         assert!(get_image_pcrs(config_map).is_err());
+    }
+
+    fn generate_rv_ctx(client: Client) -> RvContextData {
+        RvContextData {
+            client,
+            owner_reference: Default::default(),
+            pcrs_compute_image: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_success() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            _ => Ok(ConfigMap {
+                data: Some(BTreeMap::from([(
+                    REFERENCE_VALUES_FILE.to_string(),
+                    "[]".to_string(),
+                )])),
+                ..Default::default()
+            }),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        assert!(update_reference_values(ctx).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_pcr_map() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) && r.method() == Method::GET => {
+                Err::<ConfigMap, _>(StatusCode::NOT_FOUND)
+            }
+            None => Ok(ConfigMap::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        assert!(update_reference_values(ctx).await.is_err())
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_trustee_map() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            Some(r) if r.uri().path().contains(TRUSTEE_DATA_MAP) && r.method() == Method::GET => {
+                Err::<ConfigMap, _>(StatusCode::NOT_FOUND)
+            }
+            None => Ok(ConfigMap::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        assert!(update_reference_values(ctx).await.is_err())
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_trustee_data() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            _ => Ok(ConfigMap::default()),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        let err = update_reference_values(ctx).await.err().unwrap();
+        assert!(err.to_string().contains("but had no data"));
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_file() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            _ => Ok(ConfigMap {
+                data: Some(BTreeMap::new()),
+                ..Default::default()
+            }),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        let err = update_reference_values(ctx).await.err().unwrap();
+        assert!(err.to_string().contains("but had no reference values"));
     }
 
     #[test]
