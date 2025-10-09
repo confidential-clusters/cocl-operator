@@ -467,6 +467,16 @@ mod tests {
         assert!(get_image_pcrs(config_map).is_err());
     }
 
+    #[test]
+    fn test_recompute_reference_values() {
+        let result = recompute_reference_values(dummy_pcrs());
+        assert_eq!(result.len(), 3);
+        let rv = result.iter().find(|rv| rv.name == "tpm_pcr0").unwrap();
+        let val_arr = rv.value.as_array().unwrap();
+        let vals: Vec<_> = val_arr.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(vals, vec!["pcr0_val".to_string()]);
+    }
+
     fn generate_rv_ctx(client: Client) -> RvContextData {
         RvContextData {
             client,
