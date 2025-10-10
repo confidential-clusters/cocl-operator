@@ -5,9 +5,9 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-set -o errexit
+set -xo errexit
 
-source scripts/common.sh
+. scripts/common.sh
 
 if [ "$(kind get clusters 2>/dev/null)" != "kind" ]; then
 	kind create cluster --config kind/config.yaml

@@ -34,28 +34,24 @@ manifests-dir:
 	mkdir -p manifests
 
 manifests: tools
-ifndef TRUSTEE_ADDR
-	$(error TRUSTEE_ADDR is undefined)
-endif
 	target/debug/manifest-gen --output-dir manifests \
 		--namespace $(NAMESPACE) \
 		--image $(OPERATOR_IMAGE) \
 		--trustee-image $(TRUSTEE_IMAGE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
 		--register-server-image $(REG_SERVER_IMAGE) \
-		--trustee-addr $(TRUSTEE_ADDR):8080 \
 		--register-server-port 8000
 
 cluster-up:
-	scripts/create-cluster-kind.sh
+	./scripts/create-cluster-kind.sh
 
 cluster-down:
-	scripts/delete-cluster-kind.sh
+	./scripts/delete-cluster-kind.sh
 
 image:
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f Containerfile .
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
+	podman build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f ./Containerfile .
+	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f ./compute-pcrs/Containerfile .
+	podman build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f ./register-server/Containerfile .
 
 # TODO: remove the tls-verify, right now we are pushing only on the local registry
 push: image
@@ -88,3 +84,6 @@ test:
 
 test-release:
 	cargo test --workspace --all-targets --release
+
+integration-tests:
+	RUST_LOG=info cargo test --test '*' -- --no-capture
