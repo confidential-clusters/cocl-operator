@@ -14,6 +14,7 @@ use k8s_openapi::api::{
         PodTemplateSpec, Volume, VolumeMount,
     },
 };
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{DeleteParams, ObjectMeta, PostParams};
 use kube::runtime::{
     controller::{Action, Controller},
@@ -43,7 +44,7 @@ struct ComputePcrsOutput {
     pcrs: Vec<Pcr>,
 }
 
-pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
+pub async fn create_pcrs_config_map(client: Client, owner_reference: OwnerReference) -> Result<()> {
     let empty_data = BTreeMap::from([(
         PCR_CONFIG_FILE.to_string(),
         serde_json::to_string(&ImagePcrs::default())?,
@@ -52,6 +53,7 @@ pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
     let config_map = ConfigMap {
         metadata: ObjectMeta {
             name: Some(PCR_CONFIG_MAP.to_string()),
+            owner_references: Some(vec![owner_reference]),
             ..Default::default()
         },
         data: Some(empty_data),
