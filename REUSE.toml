@@ -4,11 +4,11 @@ version = 1
 path = [
   "README.md",
   "Cargo.lock",
-  "operator/src/as-config.json",
   "operator/src/kbs-config.toml",
   "operator/src/resource.rego",
-  "operator/src/rvps-config.json",
-  "operator/src/tpm.rego"
+  "operator/src/tpm.rego",
+  "docs/design/reference-values.md",
+  "docs/pics/rv-flow.png",
 ]
 SPDX-FileCopyrightText = [
     "Alice Frosi <afrosi@redhat.com>",
