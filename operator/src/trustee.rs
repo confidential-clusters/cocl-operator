@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
 // SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+// SPDX-FileCopyrightText: Dehan Meng <demeng@redhat.com>
 //
 // SPDX-License-Identifier: MIT
 
@@ -87,11 +88,10 @@ fn recompute_reference_values(image_pcrs: ImagePcrs) -> Vec<ReferenceValue> {
 }
 
 pub async fn update_reference_values(ctx: RvContextData) -> Result<()> {
-    let operator_config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
-    let image_pcrs_map = operator_config_maps.get(PCR_CONFIG_MAP).await?;
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client);
+    let image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let reference_values = recompute_reference_values(get_image_pcrs(image_pcrs_map)?);
 
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client);
     let existing_data = config_maps.get(TRUSTEE_DATA_MAP).await?;
     let err = format!("ConfigMap {TRUSTEE_DATA_MAP} existed, but had no data");
     let existing_data_map = existing_data.data.context(err)?;
@@ -144,7 +144,7 @@ fn generate_secret_volume(id: &str) -> (Volume, VolumeMount) {
     )
 }
 
-async fn mount_secret(client: Client, id: &str) -> Result<()> {
+pub async fn mount_secret(client: Client, id: &str) -> Result<()> {
     let deployments: Api<Deployment> = Api::default_namespaced(client);
     let mut deployment = deployments.get(DEPLOYMENT_NAME).await?;
     let err = format!("Deployment {DEPLOYMENT_NAME} existed, but had no spec");
@@ -182,7 +182,7 @@ pub async fn generate_secret(client: Client, id: &str) -> Result<()> {
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
     let create = secrets.create(&Default::default(), &secret).await;
     info_if_exists!(create, "Secret", id);
-    mount_secret(client, id).await
+    Ok(())
 }
 
 pub async fn generate_attestation_policy(
@@ -390,4 +390,374 @@ pub async fn generate_kbs_deployment(
     info_if_exists!(create, "Deployment", DEPLOYMENT_NAME);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_client::*;
+    use compute_pcrs_lib::Pcr;
+    use http::{Method, Request, StatusCode};
+    use serde::Deserialize;
+
+    fn dummy_pcrs() -> ImagePcrs {
+        ImagePcrs(BTreeMap::from([(
+            "cos".to_string(),
+            ImagePcr {
+                first_seen: Utc::now(),
+                pcrs: vec![
+                    Pcr {
+                        id: 0,
+                        value: "pcr0_val".to_string(),
+                        parts: vec![],
+                    },
+                    Pcr {
+                        id: 1,
+                        value: "pcr1_val".to_string(),
+                        parts: vec![],
+                    },
+                ],
+            },
+        )]))
+    }
+
+    fn dummy_pcrs_map() -> ConfigMap {
+        let data = BTreeMap::from([(
+            PCR_CONFIG_FILE.to_string(),
+            serde_json::to_string(&dummy_pcrs()).unwrap(),
+        )]);
+        ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_get_image_pcrs_success() {
+        let config_map = dummy_pcrs_map();
+        let image_pcrs = get_image_pcrs(config_map).unwrap();
+        assert_eq!(image_pcrs.0["cos"].pcrs.len(), 2);
+        assert_eq!(image_pcrs.0["cos"].pcrs[0].value, "pcr0_val");
+    }
+
+    #[test]
+    fn test_get_image_pcrs_no_data() {
+        let config_map = ConfigMap::default();
+        let err = get_image_pcrs(config_map).err().unwrap();
+        assert!(err.to_string().contains("but had no data"));
+    }
+
+    #[test]
+    fn test_get_image_pcrs_no_file() {
+        let config_map = ConfigMap {
+            data: Some(BTreeMap::new()),
+            ..Default::default()
+        };
+        let err = get_image_pcrs(config_map).err().unwrap();
+        assert!(err.to_string().contains("but had no file"));
+    }
+
+    #[test]
+    fn test_get_image_pcrs_invalid_json() {
+        let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), "not json".to_string())]);
+        let config_map = ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        };
+        assert!(get_image_pcrs(config_map).is_err());
+    }
+
+    #[test]
+    fn test_recompute_reference_values() {
+        let result = recompute_reference_values(dummy_pcrs());
+        assert_eq!(result.len(), 3);
+        let rv = result.iter().find(|rv| rv.name == "tpm_pcr0").unwrap();
+        let val_arr = rv.value.as_array().unwrap();
+        let vals: Vec<_> = val_arr.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(vals, vec!["pcr0_val".to_string()]);
+    }
+
+    fn generate_rv_ctx(client: Client) -> RvContextData {
+        RvContextData {
+            client,
+            owner_reference: Default::default(),
+            pcrs_compute_image: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_success() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            _ => Ok(ConfigMap {
+                data: Some(BTreeMap::from([(
+                    REFERENCE_VALUES_FILE.to_string(),
+                    "[]".to_string(),
+                )])),
+                ..Default::default()
+            }),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        assert!(update_reference_values(ctx).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_pcr_map() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) && r.method() == Method::GET => {
+                Err::<ConfigMap, _>(StatusCode::NOT_FOUND)
+            }
+            None => Ok(ConfigMap::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        assert!(update_reference_values(ctx).await.is_err())
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_trustee_map() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            Some(r) if r.uri().path().contains(TRUSTEE_DATA_MAP) && r.method() == Method::GET => {
+                Err::<ConfigMap, _>(StatusCode::NOT_FOUND)
+            }
+            None => Ok(ConfigMap::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        assert!(update_reference_values(ctx).await.is_err())
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_trustee_data() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            _ => Ok(ConfigMap::default()),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        let err = update_reference_values(ctx).await.err().unwrap();
+        assert!(err.to_string().contains("but had no data"));
+    }
+
+    #[tokio::test]
+    async fn test_update_rvs_no_file() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(PCR_CONFIG_MAP) => Ok(dummy_pcrs_map()),
+            _ => Ok(ConfigMap {
+                data: Some(BTreeMap::new()),
+                ..Default::default()
+            }),
+        };
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        let err = update_reference_values(ctx).await.err().unwrap();
+        assert!(err.to_string().contains("but had no reference values"));
+    }
+
+    #[test]
+    fn test_generate_luks_key_returns_correct_size() {
+        let jwk: ClevisKey = serde_json::from_slice(&generate_luks_key().unwrap()).unwrap();
+        assert_eq!(jwk.key.len(), 32);
+    }
+
+    fn dummy_deployment() -> Deployment {
+        Deployment {
+            spec: Some(DeploymentSpec {
+                template: PodTemplateSpec {
+                    spec: Some(PodSpec {
+                        containers: vec![Container::default()],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_success() {
+        let clos = |_: &_| Ok(dummy_deployment());
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(mount_secret(client, "id").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_depl() {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.uri().path().contains(DEPLOYMENT_NAME) && r.method() == Method::GET => {
+                Err::<Deployment, _>(StatusCode::NOT_FOUND)
+            }
+            None => Ok(Deployment::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(mount_secret(client, "id").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_spec() {
+        let mut depl = dummy_deployment();
+        depl.spec = None;
+        let client = MockClient::new(move |_| Ok(depl.clone()), "test".to_string()).into_client();
+        let err = mount_secret(client, "id").await.err().unwrap();
+        assert!(err.to_string().contains("but had no spec"));
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_pod_spec() {
+        let mut depl = dummy_deployment();
+        let spec = depl.spec.as_mut().unwrap();
+        spec.template.spec = None;
+        let client = MockClient::new(move |_| Ok(depl.clone()), "test".to_string()).into_client();
+        let err = mount_secret(client, "id").await.err().unwrap();
+        assert!(err.to_string().contains("but had no pod spec"));
+    }
+
+    #[tokio::test]
+    async fn test_mount_secret_no_containers() {
+        let mut depl = dummy_deployment();
+        let spec = depl.spec.as_mut().unwrap();
+        let pod_spec = spec.template.spec.as_mut().unwrap();
+        pod_spec.containers = vec![];
+        let client = MockClient::new(move |_| Ok(depl.clone()), "test".to_string()).into_client();
+        let err = mount_secret(client, "id").await.err().unwrap();
+        assert!(err.to_string().contains("but had no containers"));
+    }
+
+    async fn test_create_success<
+        F: Fn(Client) -> S,
+        S: Future<Output = Result<()>>,
+        T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+    >(
+        create: F,
+    ) {
+        let clos = |_: &_| Ok(T::default());
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(create(client).await.is_ok());
+    }
+
+    async fn test_create_already_exists<
+        F: Fn(Client) -> S,
+        S: Future<Output = Result<()>>,
+        T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+    >(
+        create: F,
+    ) {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.method() == Method::POST => Err::<T, _>(StatusCode::CONFLICT),
+            None => Ok(T::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(create(client).await.is_ok());
+    }
+
+    async fn test_create_error<
+        F: Fn(Client) -> S,
+        S: Future<Output = Result<()>>,
+        T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+    >(
+        create: F,
+    ) {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.method() == Method::POST => Err::<T, _>(StatusCode::INTERNAL_SERVER_ERROR),
+            None => Ok(T::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        let err = create(client).await.unwrap_err();
+        let msg = "internal server error";
+        assert_kube_api_error!(err, 500, "ServerTimeout", msg, "Failure");
+    }
+
+    #[tokio::test]
+    async fn test_generate_att_policy_success() {
+        let clos = |client| generate_attestation_policy(client, Default::default());
+        test_create_success::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_att_policy_already_exists() {
+        let clos = |client| generate_attestation_policy(client, Default::default());
+        test_create_already_exists::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_att_policy_error() {
+        let clos = |client| generate_attestation_policy(client, Default::default());
+        test_create_error::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_success() {
+        let clos = |client| generate_secret(client, "id");
+        test_create_success::<_, _, Secret>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_already_exists() {
+        let clos = |client| generate_secret(client, "id");
+        test_create_already_exists::<_, _, Secret>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_secret_error() {
+        let clos = |client| generate_secret(client, "id");
+        test_create_error::<_, _, Secret>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_trustee_data_success() {
+        let clos = |client| generate_trustee_data(client, Default::default());
+        test_create_success::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_trustee_data_already_exists() {
+        let clos = |client| generate_trustee_data(client, Default::default());
+        test_create_already_exists::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_trustee_data_error() {
+        let clos = |client| generate_trustee_data(client, Default::default());
+        test_create_error::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_service_success() {
+        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        test_create_success::<_, _, Service>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_service_already_exists() {
+        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        test_create_already_exists::<_, _, Service>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_service_error() {
+        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        test_create_error::<_, _, Service>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_depl_success() {
+        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
+        test_create_success::<_, _, Deployment>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_depl_already_exists() {
+        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
+        test_create_already_exists::<_, _, Deployment>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_generate_kbs_depl_error() {
+        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
+        test_create_error::<_, _, Deployment>(clos).await;
+    }
 }
