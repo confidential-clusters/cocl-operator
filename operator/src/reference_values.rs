@@ -14,7 +14,7 @@ use k8s_openapi::api::{
         PodTemplateSpec, Volume, VolumeMount,
     },
 };
-use kube::api::{DeleteParams, ObjectMeta, PostParams};
+use kube::api::{DeleteParams, ObjectMeta};
 use kube::runtime::{
     controller::{Action, Controller},
     watcher,
@@ -57,9 +57,7 @@ pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
         data: Some(empty_data),
         ..Default::default()
     };
-    let create = config_maps
-        .create(&PostParams::default(), &config_map)
-        .await;
+    let create = config_maps.create(&Default::default(), &config_map).await;
     info_if_exists!(create, "ConfigMap", PCR_CONFIG_MAP);
 
     Ok(())
@@ -216,7 +214,7 @@ async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Res
     };
 
     let jobs: Api<Job> = Api::default_namespaced(ctx.client);
-    let create = jobs.create(&PostParams::default(), &job).await;
+    let create = jobs.create(&Default::default(), &job).await;
     info_if_exists!(create, "Job", job_name);
     Ok(())
 }
@@ -245,7 +243,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()
     let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
     image_pcrs_map.data = Some(data);
     config_maps
-        .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
+        .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
         .await?;
     trustee::update_reference_values(ctx).await
 }
@@ -263,7 +261,7 @@ pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> 
     let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
     image_pcrs_map.data = Some(data);
     config_maps
-        .replace(PCR_CONFIG_MAP, &PostParams::default(), &image_pcrs_map)
+        .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
         .await?;
     trustee::update_reference_values(ctx).await
 }

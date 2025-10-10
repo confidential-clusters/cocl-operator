@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 use anyhow::Result;
-use crds::Machine;
+use crds::{ConfidentialCluster, Machine};
 use futures_util::StreamExt;
 use k8s_openapi::{
     api::{
@@ -62,18 +62,26 @@ pub async fn create_register_server_rbac(client: Client) -> Result<()> {
             name: Some(format!("{name}-role")),
             ..Default::default()
         },
-        rules: Some(vec![PolicyRule {
-            api_groups: Some(vec![Machine::group(&()).to_string()]),
-            resources: Some(vec![Machine::plural(&()).to_string()]),
-            verbs: vec![
-                "create".to_string(),
-                "get".to_string(),
-                "list".to_string(),
-                "delete".to_string(),
-                "watch".to_string(),
-            ],
-            ..Default::default()
-        }]),
+        rules: Some(vec![
+            PolicyRule {
+                api_groups: Some(vec![Machine::group(&()).to_string()]),
+                resources: Some(vec![Machine::plural(&()).to_string()]),
+                verbs: vec![
+                    "create".to_string(),
+                    "get".to_string(),
+                    "list".to_string(),
+                    "delete".to_string(),
+                    "watch".to_string(),
+                ],
+                ..Default::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
+                resources: Some(vec![ConfidentialCluster::plural(&()).to_string()]),
+                verbs: vec!["get".to_string(), "list".to_string()],
+                ..Default::default()
+            },
+        ]),
     };
 
     let role_api: Api<Role> = Api::default_namespaced(client.clone());
@@ -109,7 +117,7 @@ pub async fn create_register_server_rbac(client: Client) -> Result<()> {
         }]),
     };
 
-    let rb_api: Api<RoleBinding> = Api::default_namespaced(client.clone());
+    let rb_api: Api<RoleBinding> = Api::default_namespaced(client);
     let rb_name = format!("{name}-rolebinding");
     match rb_api.get(&rb_name).await {
         Ok(_) => {
@@ -132,7 +140,6 @@ pub async fn create_register_server_deployment(
     client: Client,
     owner_reference: OwnerReference,
     image: &str,
-    address: &str,
 ) -> Result<()> {
     let name = "register-server";
     let app_label = "register-server";
@@ -170,8 +177,6 @@ pub async fn create_register_server_deployment(
                         args: Some(vec![
                             "--port".to_string(),
                             INTERNAL_REGISTER_SERVER_PORT.to_string(),
-                            "--public-addr".to_string(),
-                            address.to_string(),
                         ]),
                         ..Default::default()
                     }],
@@ -183,7 +188,7 @@ pub async fn create_register_server_deployment(
         ..Default::default()
     };
 
-    let api: Api<Deployment> = Api::default_namespaced(client.clone());
+    let api: Api<Deployment> = Api::default_namespaced(client);
 
     match api.get(name).await {
         Ok(_) => {
@@ -231,7 +236,7 @@ pub async fn create_register_server_service(
         ..Default::default()
     };
 
-    let api: Api<Service> = Api::default_namespaced(client.clone());
+    let api: Api<Service> = Api::default_namespaced(client);
 
     match api.get(name).await {
         Ok(_) => {

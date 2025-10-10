@@ -34,17 +34,12 @@ manifests-dir:
 	mkdir -p manifests
 
 manifests: tools
-ifndef TRUSTEE_ADDR
-	$(error TRUSTEE_ADDR is undefined)
-endif
 	target/debug/manifest-gen --output-dir manifests \
 		--namespace $(NAMESPACE) \
 		--image $(OPERATOR_IMAGE) \
 		--trustee-image $(TRUSTEE_IMAGE) \
 		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
-		--register-server-image $(REG_SERVER_IMAGE) \
-		--trustee-addr $(TRUSTEE_ADDR):8080 \
-		--register-server-port 8000
+		--register-server-image $(REG_SERVER_IMAGE)
 
 cluster-up:
 	scripts/create-cluster-kind.sh
@@ -64,7 +59,12 @@ push: image
 	podman push $(REG_SERVER_IMAGE) --tls-verify=false
 
 install:
+ifndef TRUSTEE_ADDR
+	$(error TRUSTEE_ADDR is undefined)
+endif
 	scripts/clean-cluster-kind.sh $(OPERATOR_IMAGE) $(COMPUTE_PCRS_IMAGE) $(REG_SERVER_IMAGE)
+	yq '.spec.trusteeAddr = "$(TRUSTEE_ADDR):8080" | .spec.registerServerPort = 8000' \
+		-i manifests/confidential_cluster_cr.yaml
 	$(KUBECTL) apply -f manifests/operator.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_crd.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_cr.yaml

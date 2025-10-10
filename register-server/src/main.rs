@@ -3,20 +3,21 @@
 //
 // SPDX-License-Identifier: MIT
 
+use anyhow::{anyhow, Context};
 use clap::Parser;
 use clevis_pin_trustee_lib::{Config as ClevisConfig, Server as ClevisServer};
-use crds::Machine;
+use crds::{ConfidentialCluster, Machine};
 use env_logger::Env;
 use ignition_config::v3_5::{
     Clevis, ClevisCustom, Config as IgnitionConfig, Filesystem, Luks, Storage,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::{api::ListParams, Api, Client};
+use kube::{Api, Client};
 use log::{error, info};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use uuid::Uuid;
-use warp::Filter;
+use warp::{http::StatusCode, reply, Filter};
 
 #[derive(Parser)]
 #[command(name = "register-server")]
@@ -24,9 +25,6 @@ use warp::Filter;
 struct Args {
     #[arg(short, long, default_value = "8000")]
     port: u16,
-
-    #[arg(long)]
-    public_addr: String,
 }
 
 fn generate_ignition(id: &str, public_addr: &str) -> IgnitionConfig {
@@ -78,10 +76,27 @@ fn generate_ignition(id: &str, public_addr: &str) -> IgnitionConfig {
     }
 }
 
-async fn register_handler(
-    remote_addr: Option<SocketAddr>,
-    public_addr: String,
-) -> Result<impl warp::Reply, Infallible> {
+async fn get_public_trustee_addr(client: Client) -> anyhow::Result<String> {
+    let namespace = client.default_namespace().to_string();
+    let cocls: Api<ConfidentialCluster> = Api::default_namespaced(client);
+    let params = Default::default();
+    let mut list = cocls.list(&params).await?;
+    if list.items.len() != 1 {
+        return Err(anyhow!(
+            "More than one ConfidentialCluster found in namespace {namespace}. \
+             cocl-operator does not support more than one ConfidentialCluster. \
+             Cancelling Ignition Clevis PIN request.",
+        ));
+    }
+    let cocl = list.items.pop().unwrap();
+    let name = cocl.metadata.name.as_deref().unwrap_or("<no name>");
+    cocl.spec.trustee_addr.context(format!(
+        "ConfidentialCluster {name} did not specify a Trustee address. \
+         Add an address and re-register the node."
+    ))
+}
+
+async fn register_handler(remote_addr: Option<SocketAddr>) -> Result<impl warp::Reply, Infallible> {
     let id = Uuid::new_v4().to_string();
     let client_ip = remote_addr
         .map(|addr| addr.ip().to_string())
@@ -89,24 +104,40 @@ async fn register_handler(
 
     info!("Registration request from IP: {client_ip}");
 
-    match create_machine(&id, &client_ip).await {
-        Ok(_) => info!("Machine created successfully: machine-{id}"),
-        Err(e) => error!("Failed to create Machine: {e}"),
-    }
+    let internal_error = |e: anyhow::Error| {
+        let code = StatusCode::INTERNAL_SERVER_ERROR;
+        error!("{e:?}");
+        let msg = serde_json::json!({
+            "code": code.as_u16(),
+            "message": format!("{e:#}")
+        });
+        Ok(reply::with_status(reply::json(&msg), code))
+    };
 
-    Ok(warp::reply::json(&generate_ignition(&id, &public_addr)))
+    let kube_client = match Client::try_default().await {
+        Ok(c) => c,
+        Err(e) => return internal_error(e.into()),
+    };
+    match create_machine(kube_client.clone(), &id, &client_ip).await {
+        Ok(_) => info!("Machine created successfully: machine-{id}"),
+        Err(e) => return internal_error(e.context("Failed to create machine")),
+    }
+    let public_addr = match get_public_trustee_addr(kube_client).await {
+        Ok(a) => a,
+        Err(e) => return internal_error(e.context("Failed to get Trustee address")),
+    };
+
+    Ok(reply::with_status(
+        reply::json(&generate_ignition(&id, &public_addr)),
+        StatusCode::OK,
+    ))
 }
 
-async fn create_machine(
-    uuid: &str,
-    client_ip: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let client = Client::try_default().await?;
+async fn create_machine(client: Client, uuid: &str, client_ip: &str) -> anyhow::Result<()> {
     let machines: Api<Machine> = Api::default_namespaced(client);
 
     // Check for existing machines with the same IP
-    let list_params = ListParams::default();
-    let machine_list = machines.list(&list_params).await?;
+    let machine_list = machines.list(&Default::default()).await?;
 
     for existing_machine in machine_list.items {
         if existing_machine.spec.address == client_ip {
@@ -144,7 +175,6 @@ async fn main() {
     let register_route = warp::path("ignition-clevis-pin-trustee")
         .and(warp::get())
         .and(warp::addr::remote())
-        .and(warp::any().map(move || args.public_addr.clone()))
         .and_then(register_handler);
 
     let routes = register_route;
