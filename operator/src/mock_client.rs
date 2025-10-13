@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-use http::{Request, Response, StatusCode};
+use http::{Method, Request, Response, StatusCode};
 use kube::{Client, client::Body, error::ErrorResponse};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -121,4 +121,67 @@ where
         });
         Client::new(mock_svc, namespace)
     }
+}
+
+pub async fn test_create_success<
+    F: Fn(Client) -> S,
+    S: Future<Output = anyhow::Result<()>>,
+    T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+>(
+    create: F,
+) {
+    let clos = |_: &_| Ok(T::default());
+    let client = MockClient::new(clos, "test".to_string()).into_client();
+    assert!(create(client).await.is_ok());
+}
+
+pub async fn test_create_already_exists<
+    F: Fn(Client) -> S,
+    S: Future<Output = anyhow::Result<()>>,
+    T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+>(
+    create: F,
+) {
+    let clos = |req: &Option<Request<_>>| match req {
+        Some(r) if r.method() == Method::POST => Err::<T, _>(StatusCode::CONFLICT),
+        None => Ok(T::default()),
+        _ => panic!("unexpected API interaction: {req:?}"),
+    };
+    let client = MockClient::new(clos, "test".to_string()).into_client();
+    assert!(create(client).await.is_ok());
+}
+
+pub async fn test_replace<
+    F: Fn(Client) -> S,
+    S: Future<Output = anyhow::Result<()>>,
+    T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+>(
+    create: F,
+) {
+    let clos = |req: &Option<Request<_>>| match req {
+        Some(r) if r.method() == Method::POST => Err::<T, _>(StatusCode::CONFLICT),
+        Some(r) if [Method::GET, Method::PUT].contains(r.method()) => Ok(T::default()),
+        None => Ok(T::default()),
+        _ => panic!("unexpected API interaction: {req:?}"),
+    };
+    let client = MockClient::new(clos, "test".to_string()).into_client();
+    assert!(create(client).await.is_ok());
+}
+
+pub async fn test_create_error<
+    F: Fn(Client) -> S,
+    S: Future<Output = anyhow::Result<()>>,
+    T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+>(
+    create: F,
+) {
+    let clos = |req: &Option<Request<_>>| match req {
+        Some(r) if r.method() == Method::POST => Err::<T, _>(StatusCode::INTERNAL_SERVER_ERROR),
+        None => Ok(T::default()),
+        _ => panic!("unexpected API interaction: {req:?}"),
+    };
+    let client = MockClient::new(clos, "test".to_string()).into_client();
+    let err = create(client).await.unwrap_err();
+    let msg = "internal server error";
+    assert_kube_api_error!(err, 500, "ServerTimeout", msg, "Failure");
 }
