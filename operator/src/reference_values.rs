@@ -7,12 +7,15 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use compute_pcrs_lib::Pcr;
 use futures_util::StreamExt;
-use k8s_openapi::api::{
-    batch::v1::{Job, JobSpec},
-    core::v1::{
-        ConfigMap, ConfigMapVolumeSource, Container, ImageVolumeSource, KeyToPath, PodSpec,
-        PodTemplateSpec, Volume, VolumeMount,
+use k8s_openapi::{
+    api::{
+        batch::v1::{Job, JobSpec},
+        core::v1::{
+            ConfigMap, ConfigMapVolumeSource, Container, ImageVolumeSource, KeyToPath, PodSpec,
+            PodTemplateSpec, Volume, VolumeMount,
+        },
     },
+    apimachinery::pkg::apis::meta::v1::OwnerReference,
 };
 use kube::api::{DeleteParams, ObjectMeta};
 use kube::runtime::{
@@ -43,7 +46,7 @@ struct ComputePcrsOutput {
     pcrs: Vec<Pcr>,
 }
 
-pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
+pub async fn create_pcrs_config_map(client: Client, owner_reference: OwnerReference) -> Result<()> {
     let empty_data = BTreeMap::from([(
         PCR_CONFIG_FILE.to_string(),
         serde_json::to_string(&ImagePcrs::default())?,
@@ -52,6 +55,7 @@ pub async fn create_pcrs_config_map(client: Client) -> Result<()> {
     let config_map = ConfigMap {
         metadata: ObjectMeta {
             name: Some(PCR_CONFIG_MAP.to_string()),
+            owner_references: Some(vec![owner_reference]),
             ..Default::default()
         },
         data: Some(empty_data),
