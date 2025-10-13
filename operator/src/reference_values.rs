@@ -272,3 +272,27 @@ pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> 
         .await?;
     trustee::update_reference_values(ctx).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_client::*;
+
+    #[tokio::test]
+    async fn test_create_pcrs_cm_success() {
+        let clos = |client| create_pcrs_config_map(client, Default::default());
+        test_create_success::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_create_pcrs_cm_exists() {
+        let clos = |client| create_pcrs_config_map(client, Default::default());
+        test_create_already_exists(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_create_pcrs_cm_error() {
+        let clos = |client| create_pcrs_config_map(client, Default::default());
+        test_create_error(clos).await;
+    }
+}
