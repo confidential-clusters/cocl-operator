@@ -31,9 +31,9 @@ use std::collections::BTreeMap;
 const TRUSTEE_DATA_DIR: &str = "/opt/trustee";
 const TRUSTEE_SECRETS_PATH: &str = "/opt/trustee/kbs-repository/default";
 const KBS_CONFIG_FILE: &str = "kbs-config.toml";
-const REFERENCE_VALUES_FILE: &str = "reference-values.json";
+pub(crate) const REFERENCE_VALUES_FILE: &str = "reference-values.json";
 
-const TRUSTEE_DATA_MAP: &str = "trustee-data";
+pub(crate) const TRUSTEE_DATA_MAP: &str = "trustee-data";
 const ATT_POLICY_MAP: &str = "attestation-policy";
 const DEPLOYMENT_NAME: &str = "trustee-deployment";
 const INTERNAL_KBS_PORT: i32 = 8080;
