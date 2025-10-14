@@ -85,7 +85,7 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         pcrs_compute_image: cocl.spec.pcrs_compute_image.clone(),
     };
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
-    match reference_values::create_pcrs_config_map(client.clone()).await {
+    match reference_values::create_pcrs_config_map(client.clone(), owner_reference.clone()).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
     }
