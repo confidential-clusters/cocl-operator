@@ -232,7 +232,7 @@ pub async fn generate_trustee_data(client: Client, owner_reference: OwnerReferen
 pub async fn generate_kbs_service(
     client: Client,
     owner_reference: OwnerReference,
-    kbs_port: i32,
+    kbs_port: Option<i32>,
 ) -> Result<()> {
     let svc_name = "kbs-service";
     let selector = Some(BTreeMap::from([("app".to_string(), "kbs".to_string())]));
@@ -247,7 +247,7 @@ pub async fn generate_kbs_service(
             selector: selector.clone(),
             ports: Some(vec![ServicePort {
                 name: Some("kbs-port".to_string()),
-                port: kbs_port,
+                port: kbs_port.unwrap_or(INTERNAL_KBS_PORT),
                 target_port: Some(IntOrString::Int(INTERNAL_KBS_PORT)),
                 ..Default::default()
             }]),
@@ -725,19 +725,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_kbs_service_success() {
-        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        let clos = |client| generate_kbs_service(client, Default::default(), None);
         test_create_success::<_, _, Service>(clos).await;
     }
 
     #[tokio::test]
     async fn test_generate_kbs_service_replace() {
-        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        let clos = |client| generate_kbs_service(client, Default::default(), None);
         test_replace::<_, _, Service>(clos).await;
     }
 
     #[tokio::test]
     async fn test_generate_kbs_service_error() {
-        let clos = |client| generate_kbs_service(client, Default::default(), 80);
+        let clos = |client| generate_kbs_service(client, Default::default(), None);
         test_create_error::<_, _, Service>(clos).await;
     }
 
