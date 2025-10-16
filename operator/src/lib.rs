@@ -56,3 +56,21 @@ macro_rules! info_if_exists {
         }
     };
 }
+
+#[macro_export]
+macro_rules! create_or_update {
+    ($client:ident, $type:ident, $resource:ident) => {
+        let api: Api<$type> = kube::Api::default_namespaced($client);
+        let name = $resource.metadata.name.clone().unwrap();
+        match api.create(&Default::default(), &$resource).await {
+            Ok(_) => info!("Create {} {}", $type::kind(&()), name),
+            Err(kube::Error::Api(ae)) if ae.code == 409 => {
+                let existing = api.get(&name).await?;
+                $resource.metadata.resource_version = existing.resource_version();
+                api.replace(&name, &Default::default(), &$resource).await?;
+                info!("Replace {} {}", $type::kind(&()), name);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+}

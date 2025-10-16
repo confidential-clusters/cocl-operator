@@ -20,9 +20,9 @@ use k8s_openapi::apimachinery::pkg::{
     util::intstr::IntOrString,
 };
 use kube::api::{ObjectMeta, Patch};
-use kube::{Api, Client};
+use kube::{Api, Client, Resource, ResourceExt};
 use log::info;
-use operator::{RvContextData, info_if_exists};
+use operator::{RvContextData, info_if_exists, create_or_update};
 use rv_store::*;
 use serde::{Serialize, Serializer};
 use serde_json::Value::String as JsonString;
@@ -232,11 +232,7 @@ pub async fn generate_trustee_data(client: Client, owner_reference: OwnerReferen
         data: Some(data),
         ..Default::default()
     };
-
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
-    let create = config_maps.create(&Default::default(), &config_map).await;
-    info_if_exists!(create, "ConfigMap", TRUSTEE_DATA_MAP);
-
+    create_or_info_if_exists!(client, ConfigMap, config_map);
     Ok(())
 }
 
@@ -248,7 +244,7 @@ pub async fn generate_kbs_service(
     let svc_name = "kbs-service";
     let selector = Some(BTreeMap::from([("app".to_string(), "kbs".to_string())]));
 
-    let service = Service {
+    let mut service = Service {
         metadata: ObjectMeta {
             name: Some(svc_name.to_string()),
             owner_references: Some(vec![owner_reference.clone()]),
@@ -266,11 +262,7 @@ pub async fn generate_kbs_service(
         }),
         ..Default::default()
     };
-
-    let services: Api<Service> = Api::default_namespaced(client);
-    let create = services.create(&Default::default(), &service).await;
-    info_if_exists!(create, "Service", svc_name);
-
+    create_or_update!(client, Service, service);
     Ok(())
 }
 
@@ -362,7 +354,7 @@ pub async fn generate_kbs_deployment(
     let pod_spec = generate_kbs_pod_spec(image);
 
     // Inspired by trustee-operator
-    let deployment = Deployment {
+    let mut deployment = Deployment {
         metadata: ObjectMeta {
             name: Some(DEPLOYMENT_NAME.to_string()),
             owner_references: Some(vec![owner_reference]),
@@ -384,11 +376,7 @@ pub async fn generate_kbs_deployment(
         }),
         ..Default::default()
     };
-
-    let deployments: Api<Deployment> = Api::default_namespaced(client);
-    let create = deployments.create(&Default::default(), &deployment).await;
-    info_if_exists!(create, "Deployment", DEPLOYMENT_NAME);
-
+    create_or_update!(client, Deployment, deployment);
     Ok(())
 }
 
@@ -653,6 +641,23 @@ mod tests {
         assert!(create(client).await.is_ok());
     }
 
+    async fn test_replace<
+        F: Fn(Client) -> S,
+        S: Future<Output = Result<()>>,
+        T: Clone + Default + Send + Serialize + for<'de> Deserialize<'de> + 'static,
+    >(
+        create: F,
+    ) {
+        let clos = |req: &Option<Request<_>>| match req {
+            Some(r) if r.method() == Method::POST => Err::<T, _>(StatusCode::CONFLICT),
+            Some(r) if [Method::GET, Method::PUT].contains(r.method()) => Ok(T::default()),
+            None => Ok(T::default()),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        assert!(create(client).await.is_ok());
+    }
+
     async fn test_create_error<
         F: Fn(Client) -> S,
         S: Future<Output = Result<()>>,
@@ -732,9 +737,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_kbs_service_already_exists() {
+    async fn test_generate_kbs_service_replace() {
         let clos = |client| generate_kbs_service(client, Default::default(), 80);
-        test_create_already_exists::<_, _, Service>(clos).await;
+        test_replace::<_, _, Service>(clos).await;
     }
 
     #[tokio::test]
@@ -750,9 +755,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_kbs_depl_already_exists() {
+    async fn test_generate_kbs_depl_replace() {
         let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
-        test_create_already_exists::<_, _, Deployment>(clos).await;
+        test_replace::<_, _, Deployment>(clos).await;
     }
 
     #[tokio::test]
