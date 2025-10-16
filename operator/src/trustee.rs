@@ -22,7 +22,7 @@ use k8s_openapi::apimachinery::pkg::{
 use kube::api::{ObjectMeta, Patch};
 use kube::{Api, Client, Resource, ResourceExt};
 use log::info;
-use operator::{RvContextData, info_if_exists, create_or_update};
+use operator::{RvContextData, create_or_info_if_exists, create_or_update};
 use rv_store::*;
 use serde::{Serialize, Serializer};
 use serde_json::Value::String as JsonString;
@@ -178,10 +178,7 @@ pub async fn generate_secret(client: Client, id: &str) -> Result<()> {
         data: Some(data),
         ..Default::default()
     };
-
-    let secrets: Api<Secret> = Api::default_namespaced(client.clone());
-    let create = secrets.create(&Default::default(), &secret).await;
-    info_if_exists!(create, "Secret", id);
+    create_or_info_if_exists!(client, Secret, secret);
     Ok(())
 }
 
@@ -205,11 +202,7 @@ pub async fn generate_attestation_policy(
         data: Some(data),
         ..Default::default()
     };
-
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
-    let create = config_maps.create(&Default::default(), &config_map).await;
-    info_if_exists!(create, "ConfigMap", ATT_POLICY_MAP);
-
+    create_or_info_if_exists!(client, ConfigMap, config_map);
     Ok(())
 }
 

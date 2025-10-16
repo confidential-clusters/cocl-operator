@@ -45,12 +45,14 @@ pub fn name_or_default(meta: &ObjectMeta) -> String {
 }
 
 #[macro_export]
-macro_rules! info_if_exists {
-    ($result:ident, $resource_type:literal, $resource_name:expr) => {
-        match $result {
-            Ok(_) => info!("Create {} {}", $resource_type, $resource_name),
+macro_rules! create_or_info_if_exists {
+    ($client:expr, $type:ident, $resource:ident) => {
+        let api: Api<$type> = kube::Api::default_namespaced($client);
+        let name = $resource.metadata.name.clone().unwrap();
+        match api.create(&Default::default(), &$resource).await {
+            Ok(_) => info!("Create {} {}", $type::kind(&()), name),
             Err(kube::Error::Api(ae)) if ae.code == 409 => {
-                info!("{} {} already exists", $resource_type, $resource_name)
+                info!("{} {} already exists", $type::kind(&()), name);
             }
             Err(e) => return Err(e.into()),
         }
