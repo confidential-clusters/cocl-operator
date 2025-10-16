@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(CustomResource, Default, Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[kube(
-    group = "confidential-containers.io",
+    group = "confidential-clusters.io",
     version = "v1alpha1",
     kind = "ConfidentialCluster",
     namespaced,
@@ -30,7 +30,7 @@ pub struct ConfidentialClusterSpec {
 
 #[derive(CustomResource, Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[kube(
-    group = "confidential-containers.io",
+    group = "confidential-clusters.io",
     version = "v1alpha1",
     kind = "Machine",
     namespaced,
