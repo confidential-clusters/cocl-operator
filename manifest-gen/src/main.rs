@@ -201,7 +201,7 @@ fn generate_operator(args: &Args) -> Result<()> {
                 ..Default::default()
             },
             PolicyRule {
-                api_groups: Some(vec!["confidential-containers.io".to_string()]),
+                api_groups: Some(vec![Machine::group(&()).to_string()]),
                 resources: Some(vec!["machines".to_string()]),
                 verbs: vec![
                     "create".to_string(),
