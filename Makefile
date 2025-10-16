@@ -63,7 +63,7 @@ ifndef TRUSTEE_ADDR
 	$(error TRUSTEE_ADDR is undefined)
 endif
 	scripts/clean-cluster-kind.sh $(OPERATOR_IMAGE) $(COMPUTE_PCRS_IMAGE) $(REG_SERVER_IMAGE)
-	yq '.spec.trusteeAddr = "$(TRUSTEE_ADDR):8080" | .spec.registerServerPort = 8000' \
+	yq '.spec.publicTrusteeAddr = "$(TRUSTEE_ADDR):8080" | .spec.trusteeKbsPort = 8080 | .spec.registerServerPort = 8000' \
 		-i manifests/confidential_cluster_cr.yaml
 	$(KUBECTL) apply -f manifests/operator.yaml
 	$(KUBECTL) apply -f manifests/confidential_cluster_crd.yaml

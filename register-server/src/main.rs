@@ -90,8 +90,8 @@ async fn get_public_trustee_addr(client: Client) -> anyhow::Result<String> {
     }
     let cocl = list.items.pop().unwrap();
     let name = cocl.metadata.name.as_deref().unwrap_or("<no name>");
-    cocl.spec.trustee_addr.context(format!(
-        "ConfidentialCluster {name} did not specify a Trustee address. \
+    cocl.spec.public_trustee_addr.context(format!(
+        "ConfidentialCluster {name} did not specify a public Trustee address. \
          Add an address and re-register the node."
     ))
 }

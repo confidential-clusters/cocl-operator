@@ -104,11 +104,8 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
     }
 
     let name = operator::name_or_default(&cocl.metadata);
-    let err = format!("ConfidentialCluster {name} did not specify a Trustee address");
-    let trustee_addr = cocl.spec.trustee_addr.clone().context(err)?;
-    let mut split = trustee_addr.split(":");
-    // TODO upgrade to 443 once supported
-    let kbs_port: i32 = split.nth(1).and_then(|s| s.parse().ok()).unwrap_or(80);
+    let err = format!("ConfidentialCluster {name} did not specify a Trustee KBS port");
+    let kbs_port = cocl.spec.trustee_kbs_port.context(err)?;
     match trustee::generate_kbs_service(client.clone(), owner_reference.clone(), kbs_port).await {
         Ok(_) => info!("Generate the KBS service"),
         Err(e) => error!("Failed to create the KBS service: {e}"),

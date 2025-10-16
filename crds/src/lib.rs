@@ -21,7 +21,9 @@ pub struct ConfidentialClusterSpec {
     pub pcrs_compute_image: String,
     pub register_server_image: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trustee_addr: Option<String>,
+    pub public_trustee_addr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trustee_kbs_port: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub register_server_port: Option<i32>,
 }
