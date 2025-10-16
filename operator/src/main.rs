@@ -104,9 +104,7 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    let name = operator::name_or_default(&cocl.metadata);
-    let err = format!("ConfidentialCluster {name} did not specify a Trustee KBS port");
-    let kbs_port = cocl.spec.trustee_kbs_port.context(err)?;
+    let kbs_port = cocl.spec.trustee_kbs_port;
     match trustee::generate_kbs_service(client.clone(), owner_reference.clone(), kbs_port).await {
         Ok(_) => info!("Generate the KBS service"),
         Err(e) => error!("Failed to create the KBS service: {e}"),
@@ -140,9 +138,7 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         Err(e) => error!("Failed to create register server deployment: {e}"),
     }
 
-    let name = operator::name_or_default(&cocl.metadata);
-    let err = format!("ConfidentialCluster {name} did not specify a register server port");
-    let port = cocl.spec.register_server_port.context(err)?;
+    let port = cocl.spec.register_server_port;
     match register_server::create_register_server_service(client.clone(), owner_reference, port)
         .await
     {

@@ -196,7 +196,7 @@ pub async fn create_register_server_deployment(
 pub async fn create_register_server_service(
     client: Client,
     owner_reference: OwnerReference,
-    register_server_port: i32,
+    register_server_port: Option<i32>,
 ) -> Result<()> {
     let name = "register-server";
     let app_label = "register-server";
@@ -213,7 +213,7 @@ pub async fn create_register_server_service(
             selector: Some(labels),
             ports: Some(vec![ServicePort {
                 name: Some("http".to_string()),
-                port: register_server_port,
+                port: register_server_port.unwrap_or(INTERNAL_REGISTER_SERVER_PORT),
                 target_port: Some(IntOrString::Int(INTERNAL_REGISTER_SERVER_PORT)),
                 protocol: Some("TCP".to_string()),
                 ..Default::default()
