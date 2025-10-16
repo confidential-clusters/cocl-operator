@@ -1,0 +1,12 @@
+apiVersion: confidential-clusters.io/v1alpha1
+kind: ConfidentialCluster
+metadata:
+  name: confidential-cluster
+  namespace: demo-cocl
+spec:
+  trusteeImage: quay.io/confidential-clusters/key-broker-service:tpm-verifier-built-in-as-20250711
+  pcrsComputeImage: image-registry.openshift-image-registry.svc:5000/demo-cocl/compute-pcrs:latest
+  registerServerImage: image-registry.openshift-image-registry.svc:5000/demo-cocl/registration-server:latest
+  publicTrusteeAddr: kbs-service-demo-cocl.apps.dev-normal-shared.cc.azure.dog8.cloud
+  registerServerPort: 8000
+  trusteeKbsPort: 8080

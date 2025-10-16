@@ -1,0 +1,68 @@
+apiVersion: machine.openshift.io/v1beta1
+kind: MachineSet
+metadata:
+  name: machineset-cocl-demo
+  namespace: openshift-machine-api
+spec:
+  authoritativeAPI: MachineAPI
+  replicas: 0
+  selector:
+    matchLabels:
+      machine.openshift.io/cluster-api-cluster: dev-normal-shared-jtmln
+      machine.openshift.io/cluster-api-machineset: dev-normal-clevis-worker-eastus1
+  template:
+    metadata:
+      labels:
+        machine.openshift.io/cluster-api-cluster: dev-normal-shared-jtmln
+        machine.openshift.io/cluster-api-machine-role: worker
+        machine.openshift.io/cluster-api-machine-type: worker
+        machine.openshift.io/cluster-api-machineset: dev-normal-clevis-worker-eastus1
+        node-role.kubernetes.io/worker-cvm: ""
+    spec:
+      authoritativeAPI: MachineAPI
+      lifecycleHooks: {}
+      metadata: {}
+      providerSpec:
+        value:
+          apiVersion: machine.openshift.io/v1beta1
+          credentialsSecret:
+            name: azure-cloud-credentials
+            namespace: openshift-machine-api
+          diagnostics:
+            boot:
+              customerManaged:
+                storageAccountURI: https://yalanstroageaccount.blob.core.windows.net/
+              storageAccountType: CustomerManaged
+          image:
+            resourceID: /resourceGroups/yalan-rg-20250930/providers/Microsoft.Compute/galleries/yalan_Gallery/images/fcos_clevis_image/versions/0.0.1
+          kind: AzureMachineProviderSpec
+          location: eastus
+          managedIdentity: dev-normal-shared-jtmln-identity
+          metadata:
+            creationTimestamp: null
+          networkResourceGroup: dev-normal-shared-jtmln-rg
+          osDisk:
+            diskSettings: {}
+            diskSizeGB: 128
+            managedDisk:
+              securityProfile:
+                diskEncryptionSet: {}
+                securityEncryptionType: VMGuestStateOnly
+              storageAccountType: Premium_LRS
+            osType: Linux
+          publicIP: false
+          publicLoadBalancer: dev-normal-shared-jtmln
+          resourceGroup: dev-normal-shared-jtmln-rg
+          securityProfile:
+            settings:
+              confidentialVM:
+                uefiSettings:
+                  secureBoot: Enabled
+                  virtualizedTrustedPlatformModule: Enabled
+              securityType: ConfidentialVM
+          subnet: dev-normal-shared-jtmln-worker-subnet
+          userDataSecret:
+            name: demo-ignition
+          vmSize: Standard_DC2ads_v5
+          vnet: dev-normal-shared-jtmln-vnet
+          zone: "2"

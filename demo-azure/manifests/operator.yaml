@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-cocl
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cocl-operator
+  name: cocl-operator
+  namespace: demo-cocl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cocl-operator
+  template:
+    metadata:
+      labels:
+        app: cocl-operator
+    spec:
+      containers:
+      - command:
+        - /usr/bin/operator
+        image: image-registry.openshift-image-registry.svc:5000/demo-cocl/cocl-operator:latest
+        name: cocl-operator
+      serviceAccountName: cocl-operator
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cocl-operator
+  namespace: demo-cocl
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cocl-operator-role
+  namespace: demo-cocl
+rules:
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - '*'
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  - services
+  - secrets
+  - serviceaccounts
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - patch
+  - update
+- apiGroups:
+  - confidential-clusters.io
+  resources:
+  - confidentialclusters
+  - confidentialclusters/finalizers
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - patch
+  - update
+- apiGroups:
+  - confidential-clusters.io
+  resources:
+  - confidentialclusters/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - '*'
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  - rolebindings
+  verbs:
+  - '*'
+- apiGroups:
+  - confidential-clusters.io
+  resources:
+  - machines
+  verbs:
+  - create
+  - get
+  - list
+  - delete
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cocl-operator-rolebinding
+  namespace: demo-cocl
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cocl-operator-role
+subjects:
+- kind: ServiceAccount
+  name: cocl-operator
+  namespace: demo-cocl
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: compute-pcrs
+  namespace: demo-cocl
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: compute-pcrs-role
+  namespace: demo-cocl
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - patch
+  - update
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: compute-pcrs-rolebinding
+  namespace: demo-cocl
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: compute-pcrs-role
+subjects:
+- kind: ServiceAccount
+  name: compute-pcrs
+  namespace: demo-cocl
