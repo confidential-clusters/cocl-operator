@@ -27,7 +27,7 @@ mod reference_values;
 mod register_server;
 mod trustee;
 
-const BOOT_IMAGE: &str = "quay.io/confidential-clusters/fedora-coreos:latest";
+const BOOT_IMAGE: &str = "quay.io/confidential-clusters/fedora-coreos:42.20250705.3.0-tagged-pcrs";
 
 async fn reconcile(
     cocl: Arc<ConfidentialCluster>,
