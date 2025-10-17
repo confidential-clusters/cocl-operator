@@ -11,9 +11,9 @@ use clevis_pin_trustee_lib::Key as ClevisKey;
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{
-    ConfigMap, ConfigMapVolumeSource, Container, ContainerPort, EmptyDirVolumeSource, PodSpec,
-    PodTemplateSpec, Secret, SecretVolumeSource, Service, ServicePort, ServiceSpec, Volume,
-    VolumeMount,
+    ConfigMap, ConfigMapVolumeSource, Container, ContainerPort, EmptyDirVolumeSource, EnvVar,
+    PodSpec, PodTemplateSpec, Secret, SecretVolumeSource, Service, ServicePort, ServiceSpec,
+    Volume, VolumeMount,
 };
 use k8s_openapi::apimachinery::pkg::{
     apis::meta::v1::{LabelSelector, OwnerReference},
@@ -321,6 +321,11 @@ fn generate_kbs_pod_spec(image: &str) -> PodSpec {
                 "--config-file".to_string(),
                 format!("{TRUSTEE_DATA_DIR}/{KBS_CONFIG_FILE}"),
             ]),
+            env: Some(vec![EnvVar {
+                name: "RUST_LOG".to_string(),
+                value: Some("debug".to_string()),
+                ..Default::default()
+            }]),
             image: Some(image.to_string()),
             name: "kbs".to_string(),
             ports: Some(vec![ContainerPort {
