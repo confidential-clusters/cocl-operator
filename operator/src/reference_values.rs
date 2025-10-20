@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use compute_pcrs_lib::Pcr;
 use futures_util::StreamExt;
@@ -67,11 +67,10 @@ pub async fn create_pcrs_config_map(client: Client, owner_reference: OwnerRefere
     Ok(())
 }
 
-async fn fetch_pcr_label(image_ref: &str) -> Result<Option<Vec<Pcr>>> {
-    let reference: oci_client::Reference = image_ref.parse()?;
+async fn fetch_pcr_label(image_ref: &oci_client::Reference) -> Result<Option<Vec<Pcr>>> {
     let client = oci_client::Client::new(Default::default());
     let (_, _, raw_config) = client
-        .pull_manifest_and_config(&reference, &RegistryAuth::Anonymous)
+        .pull_manifest_and_config(image_ref, &RegistryAuth::Anonymous)
         .await?;
     let config: ImageConfiguration = serde_json::from_str(&raw_config)?;
     config
@@ -230,7 +229,14 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()
     if image_pcrs.0.contains_key(boot_image) {
         return Ok(());
     }
-    let label = fetch_pcr_label(boot_image).await?;
+    let image_ref: oci_client::Reference = boot_image.parse()?;
+    if image_ref.digest().is_none() {
+        return Err(anyhow!(
+            "Image {boot_image} did not specify a digest. \
+             Only images with a digest are supported to avoid ambiguity."
+        ));
+    }
+    let label = fetch_pcr_label(&image_ref).await?;
     if label.is_none() {
         return compute_fresh_pcrs(ctx, boot_image).await;
     }
@@ -239,9 +245,6 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()
         first_seen: Utc::now(),
         pcrs: label.unwrap(),
     };
-    // Non-goal: Support tags whose referenced versions change (e.g. `latest`).
-    // This would introduce hard-to-define behavior for disallowing older versions that were
-    // introduced as a tag that is still allowed.
     image_pcrs.0.insert(boot_image.to_string(), image_pcr);
     let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
     let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
