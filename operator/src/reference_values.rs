@@ -22,7 +22,7 @@ use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{Api, Client};
+use kube::{Api, Client, Resource};
 use log::info;
 use oci_client::secrets::RegistryAuth;
 use oci_spec::image::ImageConfiguration;
@@ -32,7 +32,8 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::trustee::{self, get_image_pcrs};
 use operator::{
-    ControllerError, RvContextData, controller_error_policy, controller_info, info_if_exists,
+    ControllerError, RvContextData, controller_error_policy, controller_info,
+    create_or_info_if_exists,
 };
 use rv_store::*;
 
@@ -51,7 +52,6 @@ pub async fn create_pcrs_config_map(client: Client, owner_reference: OwnerRefere
         PCR_CONFIG_FILE.to_string(),
         serde_json::to_string(&ImagePcrs::default())?,
     )]);
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
     let config_map = ConfigMap {
         metadata: ObjectMeta {
             name: Some(PCR_CONFIG_MAP.to_string()),
@@ -61,9 +61,7 @@ pub async fn create_pcrs_config_map(client: Client, owner_reference: OwnerRefere
         data: Some(empty_data),
         ..Default::default()
     };
-    let create = config_maps.create(&Default::default(), &config_map).await;
-    info_if_exists!(create, "ConfigMap", PCR_CONFIG_MAP);
-
+    create_or_info_if_exists!(client, ConfigMap, config_map);
     Ok(())
 }
 
@@ -215,10 +213,7 @@ async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Res
         }),
         ..Default::default()
     };
-
-    let jobs: Api<Job> = Api::default_namespaced(ctx.client);
-    let create = jobs.create(&Default::default(), &job).await;
-    info_if_exists!(create, "Job", job_name);
+    create_or_info_if_exists!(ctx.client, Job, job);
     Ok(())
 }
 

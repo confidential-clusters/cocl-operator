@@ -24,12 +24,12 @@ use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{Api, Client, Resource};
+use kube::{Api, Client, Resource, ResourceExt};
 use log::info;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::trustee;
-use operator::{ControllerError, controller_error_policy};
+use operator::{ControllerError, controller_error_policy, create_or_update};
 
 const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
 
@@ -145,7 +145,7 @@ pub async fn create_register_server_deployment(
     let app_label = "register-server";
     let labels = BTreeMap::from([("app".to_string(), app_label.to_string())]);
 
-    let deployment = Deployment {
+    let mut deployment = Deployment {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             owner_references: Some(vec![owner_reference]),
@@ -188,19 +188,7 @@ pub async fn create_register_server_deployment(
         ..Default::default()
     };
 
-    let api: Api<Deployment> = Api::default_namespaced(client);
-
-    match api.get(name).await {
-        Ok(_) => {
-            info!("Register server deployment already exists, updating...");
-            api.replace(name, &Default::default(), &deployment).await?;
-        }
-        Err(_) => {
-            info!("Creating register server deployment...");
-            api.create(&Default::default(), &deployment).await?;
-        }
-    }
-
+    create_or_update!(client, Deployment, deployment);
     info!("Register server deployment created/updated successfully");
     Ok(())
 }
@@ -208,13 +196,13 @@ pub async fn create_register_server_deployment(
 pub async fn create_register_server_service(
     client: Client,
     owner_reference: OwnerReference,
-    register_server_port: i32,
+    register_server_port: Option<i32>,
 ) -> Result<()> {
     let name = "register-server";
     let app_label = "register-server";
     let labels = BTreeMap::from([("app".to_string(), app_label.to_string())]);
 
-    let service = Service {
+    let mut service = Service {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             labels: Some(labels.clone()),
@@ -225,7 +213,7 @@ pub async fn create_register_server_service(
             selector: Some(labels),
             ports: Some(vec![ServicePort {
                 name: Some("http".to_string()),
-                port: register_server_port,
+                port: register_server_port.unwrap_or(INTERNAL_REGISTER_SERVER_PORT),
                 target_port: Some(IntOrString::Int(INTERNAL_REGISTER_SERVER_PORT)),
                 protocol: Some("TCP".to_string()),
                 ..Default::default()
@@ -236,19 +224,7 @@ pub async fn create_register_server_service(
         ..Default::default()
     };
 
-    let api: Api<Service> = Api::default_namespaced(client);
-
-    match api.get(name).await {
-        Ok(_) => {
-            info!("Register server service already exists, updating...");
-            api.replace(name, &Default::default(), &service).await?;
-        }
-        Err(_) => {
-            info!("Creating register server service...");
-            api.create(&Default::default(), &service).await?;
-        }
-    }
-
+    create_or_update!(client, Service, service);
     info!("Register server service created/updated successfully");
     Ok(())
 }

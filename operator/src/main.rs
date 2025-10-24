@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use env_logger::Env;
 use futures_util::StreamExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use kube::api::Patch;
 use kube::{Api, Client, Resource};
 use kube::{
     api::ObjectMeta,
@@ -20,7 +21,8 @@ use kube::{
 };
 use log::{error, info, warn};
 
-use crds::ConfidentialCluster;
+use crds::conditions::{installed_condition, known_trustee_address_condition};
+use crds::{ConfidentialCluster, ConfidentialClusterStatus, NotInstalledReason};
 #[cfg(test)]
 mod mock_client;
 mod reference_values;
@@ -30,32 +32,81 @@ mod trustee;
 // tagged as 42.20250705.3.0
 const BOOT_IMAGE: &str = "quay.io/confidential-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5";
 
+fn is_new_spec(status: &Option<ConfidentialClusterStatus>, generation: Option<i64>) -> bool {
+    status
+        .as_ref()
+        .and_then(|s| s.conditions.first())
+        .map(|c| c.observed_generation < generation)
+        .unwrap_or(true)
+}
+
+macro_rules! update_status {
+    ($api:ident, $name:ident, $status:expr) => {{
+        let patch = Patch::Merge(serde_json::json!({"status": $status}));
+        $api.patch_status($name, &Default::default(), &patch).await
+            .map_err(Into::<anyhow::Error>::into)?;
+    }}
+}
+
 async fn reconcile(
     cocl: Arc<ConfidentialCluster>,
     client: Arc<Client>,
 ) -> Result<Action, operator::ControllerError> {
-    let name = operator::name_or_default(&cocl.metadata);
-    if cocl.metadata.deletion_timestamp.is_some() {
-        info!("Registered deletion of ConfidentialCluster {name}");
+    let generation = cocl.metadata.generation;
+    if !is_new_spec(&cocl.status, generation) {
         return Ok(Action::await_change());
     }
-    let kube_client = Arc::unwrap_or_clone(client);
+    let known_address = cocl.spec.public_trustee_addr.is_some();
+    let mut conditions = vec![known_trustee_address_condition(known_address, generation)];
 
+    let kube_client = Arc::unwrap_or_clone(client);
+    let namespace = kube_client.default_namespace();
+    let cocl_name = &cocl.metadata.name;
+    if cocl_name.is_none() {
+        warn!(
+            "A ConfidentialCluster was found in {namespace}, but it had no name. \
+             cocl-operator does not support unnamed ConfidentialClusters. Requeueing...",
+        );
+        return Ok(Action::requeue(Duration::from_secs(60)));
+    }
+    let name = cocl_name.as_ref().unwrap();
     let cocls: Api<ConfidentialCluster> = Api::default_namespaced(kube_client.clone());
+
+    if cocl.metadata.deletion_timestamp.is_some() {
+        info!("Registered deletion of ConfidentialCluster {name}");
+        let condition = installed_condition(Some(NotInstalledReason::Uninstalling), generation);
+        conditions.push(condition);
+        update_status!(cocls, name, ConfidentialClusterStatus { conditions });
+        return Ok(Action::await_change());
+    }
+
     let list = cocls.list(&Default::default()).await;
     let cocl_list = list.map_err(Into::<anyhow::Error>::into)?;
     if cocl_list.items.len() > 1 {
-        let namespace = kube_client.default_namespace();
         warn!(
             "More than one ConfidentialCluster found in namespace {namespace}. \
-              cocl-operator does not support more than one ConfidentialCluster. Requeueing...",
+             cocl-operator does not support more than one ConfidentialCluster. Requeueing...",
         );
+        let condition = installed_condition(Some(NotInstalledReason::NonUnique), generation);
+        conditions.push(condition);
+        update_status!(cocls, name, ConfidentialClusterStatus { conditions });
         return Ok(Action::requeue(Duration::from_secs(60)));
     }
 
     info!("Setting up ConfidentialCluster {name}");
-    install_trustee_configuration(kube_client.clone(), &cocl).await?;
-    install_register_server(kube_client, &cocl).await?;
+    let mut installing = conditions.clone();
+    let condition = installed_condition(Some(NotInstalledReason::Installing), generation);
+    installing.push(condition);
+    let status = ConfidentialClusterStatus {
+        conditions: installing,
+    };
+    update_status!(cocls, name, status);
+
+    let redeploying = cocl.metadata.generation.map(|g| g > 1).unwrap_or(false);
+    install_trustee_configuration(kube_client.clone(), &cocl, redeploying).await?;
+    install_register_server(kube_client, &cocl, redeploying).await?;
+    conditions.push(installed_condition(None, generation));
+    update_status!(cocls, name, ConfidentialClusterStatus { conditions });
     Ok(Action::await_change())
 }
 
@@ -72,7 +123,11 @@ fn generate_owner_reference(metadata: &ObjectMeta) -> Result<OwnerReference> {
     })
 }
 
-async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluster) -> Result<()> {
+async fn install_trustee_configuration(
+    client: Client,
+    cocl: &ConfidentialCluster,
+    redeploying: bool,
+) -> Result<()> {
     let owner_reference = generate_owner_reference(&cocl.metadata)?;
 
     match trustee::generate_trustee_data(client.clone(), owner_reference.clone()).await {
@@ -85,7 +140,9 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         owner_reference: owner_reference.clone(),
         pcrs_compute_image: cocl.spec.pcrs_compute_image.clone(),
     };
-    reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
+    if !redeploying {
+        reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
+    }
     match reference_values::create_pcrs_config_map(client.clone(), owner_reference.clone()).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
@@ -104,9 +161,7 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
         Err(e) => error!("Failed to create the attestation policy configmap: {e}"),
     }
 
-    let name = operator::name_or_default(&cocl.metadata);
-    let err = format!("ConfidentialCluster {name} did not specify a Trustee KBS port");
-    let kbs_port = cocl.spec.trustee_kbs_port.context(err)?;
+    let kbs_port = cocl.spec.trustee_kbs_port;
     match trustee::generate_kbs_service(client.clone(), owner_reference.clone(), kbs_port).await {
         Ok(_) => info!("Generate the KBS service"),
         Err(e) => error!("Failed to create the KBS service: {e}"),
@@ -121,7 +176,11 @@ async fn install_trustee_configuration(client: Client, cocl: &ConfidentialCluste
     Ok(())
 }
 
-async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> Result<()> {
+async fn install_register_server(
+    client: Client,
+    cocl: &ConfidentialCluster,
+    redeploying: bool,
+) -> Result<()> {
     let owner_reference = generate_owner_reference(&cocl.metadata)?;
 
     match register_server::create_register_server_rbac(client.clone()).await {
@@ -140,9 +199,7 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         Err(e) => error!("Failed to create register server deployment: {e}"),
     }
 
-    let name = operator::name_or_default(&cocl.metadata);
-    let err = format!("ConfidentialCluster {name} did not specify a register server port");
-    let port = cocl.spec.register_server_port.context(err)?;
+    let port = cocl.spec.register_server_port;
     match register_server::create_register_server_service(client.clone(), owner_reference, port)
         .await
     {
@@ -150,7 +207,9 @@ async fn install_register_server(client: Client, cocl: &ConfidentialCluster) -> 
         Err(e) => error!("Failed to create register server service: {e}"),
     }
 
-    register_server::launch_keygen_controller(client).await;
+    if !redeploying {
+        register_server::launch_keygen_controller(client).await;
+    }
 
     Ok(())
 }

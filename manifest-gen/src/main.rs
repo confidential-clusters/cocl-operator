@@ -345,6 +345,7 @@ pub fn generate_confidential_cluster_cr(args: &Args) -> Result<()> {
             register_server_image: args.register_server_image.clone(),
             ..Default::default()
         },
+        status: None,
     };
 
     let output_path = args.output_dir.join("confidential_cluster_cr.yaml");
