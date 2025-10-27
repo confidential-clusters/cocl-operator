@@ -12,7 +12,7 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }
-crds = { path = "../crds" }
+cocl-operator-lib = { path = "../lib" }
 env_logger.workspace = true
 k8s-openapi.workspace = true
 kube.workspace = true

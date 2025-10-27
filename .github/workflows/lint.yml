@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Yalan Zhang <yalzhang@redhat.com>
+# SPDX-FileCopyrightText: Timothée Ravier <tim@siosm.fr>
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# Inspired by https://github.com/coreos/repo-templates
+
+name: "Lint"
+on:
+  pull_request:
+    branches:
+      - "main"
+permissions:
+  contents: "read"
+
+# Don't waste job slots on superseded code
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned toolchain for linting
+  ACTIONS_LINTS_TOOLCHAIN: 1.85.0
+
+jobs:
+  linting:
+    name: "Lints, pinned toolchain"
+    runs-on: "ubuntu-24.04"
+    container: "ghcr.io/confidential-clusters/buildroot:latest"
+    steps:
+      - name: "Check out repository"
+        uses: actions/checkout@v5
+      - name: "Install Rust toolchain"
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
+          components: rustfmt, clippy
+      - name: "Install Go toolchain"
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: "Cache build artifacts"
+        uses: Swatinem/rust-cache@v2
+      - name: "Build CRDs"
+        run: make crds-rs
+      - name: "cargo fmt (check)"
+        run: cargo fmt -- --check -l
+      - name: "cargo clippy (warnings)"
+        run: cargo clippy --all-targets -- -D warnings
+      - name: "gofmt (check)"
+        run: gofmt -l .
+      - name: "go vet"
+        run: go vet ./...

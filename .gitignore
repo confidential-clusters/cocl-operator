@@ -3,6 +3,12 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
+.crates.toml
+.crates2.json
 .kubeconfig
+/bin
+/config/crd
+/config/deploy
+/config/rbac/role.yaml
+/lib/src/kopium
 /target
-/manifests
