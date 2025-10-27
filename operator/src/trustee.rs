@@ -213,7 +213,7 @@ pub async fn generate_trustee_data(client: Client, owner_reference: OwnerReferen
     let data = BTreeMap::from([
         ("kbs-config.toml".to_string(), kbs_config.to_string()),
         ("policy.rego".to_string(), policy_rego.to_string()),
-        (REFERENCE_VALUES_FILE.to_string(), "{}".to_string()),
+        (REFERENCE_VALUES_FILE.to_string(), "[]".to_string()),
     ]);
 
     let config_map = ConfigMap {
