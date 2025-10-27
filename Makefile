@@ -12,6 +12,8 @@ KUBECTL=kubectl
 LOCALBIN ?= $(shell pwd)/bin
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
+YQ_VERSION ?= v4.48.1
+YQ ?= $(LOCALBIN)/yq-$(YQ_VERSION)
 # tracking k8s v1.33, sync with Cargo.toml
 KOPIUM_VERSION ?= 0.21.3
 KOPIUM ?= $(LOCALBIN)/kopium-$(KOPIUM_VERSION)
@@ -83,12 +85,12 @@ push: image
 	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
 	podman push $(REG_SERVER_IMAGE) --tls-verify=false
 
-install:
+install: $(YQ)
 ifndef TRUSTEE_ADDR
 	$(error TRUSTEE_ADDR is undefined)
 endif
 	scripts/clean-cluster-kind.sh $(OPERATOR_IMAGE) $(COMPUTE_PCRS_IMAGE) $(REG_SERVER_IMAGE)
-	yq '.spec.publicTrusteeAddr = "$(TRUSTEE_ADDR):8080"' \
+	$(YQ) '.spec.publicTrusteeAddr = "$(TRUSTEE_ADDR):8080"' \
 		-i $(DEPLOY_PATH)/confidential_cluster_cr.yaml
 	$(YQ) '.namespace = "$(NAMESPACE)"' -i config/rbac/kustomization.yaml
 	$(KUBECTL) apply -f $(DEPLOY_PATH)/operator.yaml
@@ -129,6 +131,9 @@ $(LOCALBIN):
 
 $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),controller-gen,sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+
+$(YQ): $(LOCALBIN)
+	$(call go-install-tool,$(YQ),yq,github.com/mikefarah/yq/v4,$(YQ_VERSION))
 
 $(KOPIUM): $(LOCALBIN)
 	$(call cargo-install-tool,$(KOPIUM),kopium,$(KOPIUM_VERSION))
