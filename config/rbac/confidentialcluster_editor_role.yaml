@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# This rule is not used by the project cocl-operator itself.
+# It is provided to allow the cluster admin to help manage permissions for users.
+#
+# Grants permissions to create, update, and delete resources within the confidential-clusters.io.
+# This role is intended for users who need to manage these resources
+# but should not control RBAC or manage permissions for others.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: cocl-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: confidentialcluster-editor-role
+rules:
+- apiGroups:
+  - confidential-clusters.io
+  resources:
+  - confidentialclusters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - confidential-clusters.io
+  resources:
+  - confidentialclusters/status
+  verbs:
+  - get
