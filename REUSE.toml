@@ -6,7 +6,6 @@ path = [
   "Cargo.lock",
   "operator/src/kbs-config.toml",
   "operator/src/resource.rego",
-  "operator/src/rvps-config.json",
   "operator/src/tpm.rego",
   "docs/pics/*",
   "docs/design/*"
