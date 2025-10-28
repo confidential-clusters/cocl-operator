@@ -378,41 +378,7 @@ pub async fn generate_kbs_deployment(
 mod tests {
     use super::*;
     use crate::mock_client::*;
-    use cocl_operator_lib::reference_values::ImagePcr;
-    use compute_pcrs_lib::Pcr;
     use http::{Method, Request, StatusCode};
-
-    fn dummy_pcrs() -> ImagePcrs {
-        ImagePcrs(BTreeMap::from([(
-            "cos".to_string(),
-            ImagePcr {
-                first_seen: Utc::now(),
-                pcrs: vec![
-                    Pcr {
-                        id: 0,
-                        value: "pcr0_val".to_string(),
-                        parts: vec![],
-                    },
-                    Pcr {
-                        id: 1,
-                        value: "pcr1_val".to_string(),
-                        parts: vec![],
-                    },
-                ],
-            },
-        )]))
-    }
-
-    fn dummy_pcrs_map() -> ConfigMap {
-        let data = BTreeMap::from([(
-            PCR_CONFIG_FILE.to_string(),
-            serde_json::to_string(&dummy_pcrs()).unwrap(),
-        )]);
-        ConfigMap {
-            data: Some(data),
-            ..Default::default()
-        }
-    }
 
     #[test]
     fn test_get_image_pcrs_success() {
@@ -457,14 +423,6 @@ mod tests {
         let val_arr = rv.value.as_array().unwrap();
         let vals: Vec<_> = val_arr.iter().map(|v| v.as_str().unwrap()).collect();
         assert_eq!(vals, vec!["pcr0_val".to_string()]);
-    }
-
-    fn generate_rv_ctx(client: Client) -> RvContextData {
-        RvContextData {
-            client,
-            owner_reference: Default::default(),
-            pcrs_compute_image: String::new(),
-        }
     }
 
     #[tokio::test]

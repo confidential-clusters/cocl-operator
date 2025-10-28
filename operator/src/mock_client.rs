@@ -3,10 +3,15 @@
 //
 // SPDX-License-Identifier: MIT
 
+use chrono::Utc;
+use cocl_operator_lib::reference_values::{ImagePcr, ImagePcrs, PCR_CONFIG_FILE};
+use compute_pcrs_lib::Pcr;
 use http::{Method, Request, Response, StatusCode};
+use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Client, client::Body, error::ErrorResponse};
+use operator::RvContextData;
 use serde::{Deserialize, Serialize};
-use std::convert::Infallible;
+use std::{collections::BTreeMap, convert::Infallible};
 use tower::service_fn;
 
 macro_rules! assert_kube_api_error {
@@ -184,4 +189,44 @@ pub async fn test_create_error<
     let err = create(client).await.unwrap_err();
     let msg = "internal server error";
     assert_kube_api_error!(err, 500, "ServerTimeout", msg, "Failure");
+}
+
+pub fn dummy_pcrs() -> ImagePcrs {
+    ImagePcrs(BTreeMap::from([(
+        "cos".to_string(),
+        ImagePcr {
+            first_seen: Utc::now(),
+            pcrs: vec![
+                Pcr {
+                    id: 0,
+                    value: "pcr0_val".to_string(),
+                    parts: vec![],
+                },
+                Pcr {
+                    id: 1,
+                    value: "pcr1_val".to_string(),
+                    parts: vec![],
+                },
+            ],
+        },
+    )]))
+}
+
+pub fn dummy_pcrs_map() -> ConfigMap {
+    let data = BTreeMap::from([(
+        PCR_CONFIG_FILE.to_string(),
+        serde_json::to_string(&dummy_pcrs()).unwrap(),
+    )]);
+    ConfigMap {
+        data: Some(data),
+        ..Default::default()
+    }
+}
+
+pub fn generate_rv_ctx(client: Client) -> RvContextData {
+    RvContextData {
+        client,
+        owner_reference: Default::default(),
+        pcrs_compute_image: String::new(),
+    }
 }
