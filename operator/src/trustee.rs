@@ -354,6 +354,7 @@ pub async fn generate_kbs_deployment(
             ..Default::default()
         },
         spec: Some(DeploymentSpec {
+            replicas: Some(1),
             selector: LabelSelector {
                 match_labels: selector.clone(),
                 ..Default::default()
@@ -543,6 +544,7 @@ mod tests {
     fn dummy_deployment() -> Deployment {
         Deployment {
             spec: Some(DeploymentSpec {
+                replicas: Some(1),
                 template: PodTemplateSpec {
                     spec: Some(PodSpec {
                         containers: vec![Container::default()],

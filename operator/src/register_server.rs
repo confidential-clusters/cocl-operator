@@ -149,7 +149,6 @@ pub async fn create_register_server_deployment(
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             owner_references: Some(vec![owner_reference]),
-            labels: Some(labels.clone()),
             ..Default::default()
         },
         spec: Some(DeploymentSpec {
@@ -170,8 +169,6 @@ pub async fn create_register_server_deployment(
                         image: Some(image.to_string()),
                         ports: Some(vec![ContainerPort {
                             container_port: INTERNAL_REGISTER_SERVER_PORT,
-                            name: Some("http".to_string()),
-                            protocol: Some("TCP".to_string()),
                             ..Default::default()
                         }]),
                         args: Some(vec![
