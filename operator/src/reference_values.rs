@@ -384,4 +384,12 @@ mod tests {
         let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
         test_create_error(clos).await;
     }
+
+    // handle_new_image is an inherently online function and not tested here.
+
+    #[tokio::test]
+    async fn test_disallow_image() {
+        let ctx = generate_rv_ctx(MockClient::new(pcr_response, "test".to_string()).into_client());
+        assert!(disallow_image(ctx, "registry").await.is_ok());
+    }
 }
