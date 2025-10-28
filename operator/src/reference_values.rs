@@ -351,4 +351,19 @@ mod tests {
         let result = job_reconcile(Arc::new(job), Arc::new(ctx)).await.unwrap();
         assert_eq!(result, Action::requeue(Duration::from_secs(300)));
     }
+
+    #[test]
+    fn test_get_job_name_trailing_dash() {
+        let name = get_job_name("quay.io/some_ref:some-tag-").unwrap();
+        assert_eq!(name, "compute-pcrs-105a7802d8-quay-io-some-ref-some-tag");
+    }
+
+    #[test]
+    fn test_get_job_name_sha() {
+        let name = get_job_name("quay.io/some-ref@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5").unwrap();
+        assert_eq!(
+            name,
+            "compute-pcrs-6c57e93939-quay-io-some-ref-sha256-e71dad00aa0e3d7"
+        );
+    }
 }
