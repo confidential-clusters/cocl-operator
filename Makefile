@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-.PHONY: all build crds-rs manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
+.PHONY: all build crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
 NAMESPACE ?= confidential-clusters
 
@@ -25,7 +25,7 @@ TRUSTEE_IMAGE ?= quay.io/confidential-clusters/key-broker-service:tpm-verifier-b
 
 BUILD_TYPE ?= release
 
-all: build tools reg-server
+all: build cocl-gen reg-server
 
 build: crds-rs
 	cargo build -p compute-pcrs
@@ -35,12 +35,10 @@ reg-server: crds-rs
 	cargo build -p register-server
 
 CRD_YAML_PATH = config/crd
-CRD_YAML_SENTINEL = $(CRD_YAML_PATH)/.built
 API_PATH = api/v1alpha1
-$(CRD_YAML_SENTINEL): $(CONTROLLER_GEN) $(API_PATH)/crds.go
+generate: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) rbac:roleName=cocl-operator-role crd webhook paths="./..." \
 		output:crd:artifacts:config=$(CRD_YAML_PATH)
-	@touch $@
 
 RS_LIB_PATH = lib/src
 CRD_RS_PATH = $(RS_LIB_PATH)/kopium
@@ -52,21 +50,21 @@ $(CRD_RS_PATH)/%.rs: $(CRD_YAML_PATH)/$(YAML_PREFIX)%.yaml $(KOPIUM) $(CRD_RS_PA
 	$(KOPIUM) -f $< > $@
 	rustfmt $@
 
-crds-rs: $(CRD_YAML_SENTINEL)
+crds-rs: generate
 	$(MAKE) $(shell find $(CRD_YAML_PATH) -type f \
 		| sed -E 's|$(CRD_YAML_PATH)/$(YAML_PREFIX)(.*)\.yaml|$(CRD_RS_PATH)/\1.rs|')
 
-tools: crds-rs
-	cargo build -p manifest-gen
+cocl-gen:
+	go build -o $@ api/$@.go
 
 DEPLOY_PATH = config/deploy
-manifests: tools
-	target/debug/manifest-gen --output-dir $(DEPLOY_PATH) \
-		--namespace $(NAMESPACE) \
-		--image $(OPERATOR_IMAGE) \
-		--trustee-image $(TRUSTEE_IMAGE) \
-		--pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
-		--register-server-image $(REG_SERVER_IMAGE)
+manifests: cocl-gen
+	./cocl-gen -output-dir $(DEPLOY_PATH) \
+		-namespace $(NAMESPACE) \
+		-image $(OPERATOR_IMAGE) \
+		-trustee-image $(TRUSTEE_IMAGE) \
+		-pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
+		-register-server-image $(REG_SERVER_IMAGE)
 
 cluster-up:
 	scripts/create-cluster-kind.sh
@@ -103,7 +101,7 @@ endif
 clean:
 	cargo clean
 	rm -rf bin manifests $(CRD_YAML_PATH) $(CRD_RS_PATH)
-	rm -f config/rbac/role.yaml .crates.toml .crates2.json
+	rm -f cocl-gen config/rbac/role.yaml .crates.toml .crates2.json
 
 fmt-check:
 	cargo fmt -- --check

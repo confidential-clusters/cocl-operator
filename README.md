@@ -10,7 +10,7 @@ within the cluster.
 
 ## Repository Structure
 
--   `/api`: Defines the `ConfidentialCluster` Custom Resource Definition (CRD) and associated CRDs and RBAC definitions in Go.
+-   `/api`: Defines the `ConfidentialCluster` Custom Resource Definition (CRD) and associated CRDs and RBAC definitions in Go. Also contains a program to generate a `ConfidentialCluster` CR and associated deployment.
 -   `/operator`: Contains the source code for the Kubernetes operator itself.
 -   `/register-server`: A server that provides Clevis PINs for key retrieval with random UUIDs.
 -   `/compute-pcrs`: A program to compute PCR reference values using the [compute-pcrs library](https://github.com/confidential-clusters/compute-pcrs) and insert them into a ConfigMap, run as a Job.
