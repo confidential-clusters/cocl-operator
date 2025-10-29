@@ -53,3 +53,5 @@ jobs:
         run: gofmt -l .
       - name: "go vet"
         run: go vet ./...
+      - name: "Ensure Rust & Go conditions definitions use same strings"
+        run: cargo test --test equal_conditions
