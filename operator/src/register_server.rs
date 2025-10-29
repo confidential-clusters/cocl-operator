@@ -145,3 +145,27 @@ pub async fn launch_keygen_controller(client: Client) {
             }),
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_client::*;
+
+    #[tokio::test]
+    async fn test_create_reg_server_depl_success() {
+        let clos = |client| create_register_server_deployment(client, Default::default(), "image");
+        test_create_success::<_, _, Deployment>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_create_reg_server_depl_replace() {
+        let clos = |client| create_register_server_deployment(client, Default::default(), "image");
+        test_replace::<_, _, Deployment>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_create_reg_server_depl_error() {
+        let clos = |client| create_register_server_deployment(client, Default::default(), "image");
+        test_create_error(clos).await;
+    }
+}
