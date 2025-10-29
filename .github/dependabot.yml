@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: Timothée Ravier <tim@siosm.fr>
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
 #
 # SPDX-License-Identifier: CC0-1.0
 
@@ -14,6 +15,10 @@ updates:
       actions:
         patterns:
           - "*"
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:

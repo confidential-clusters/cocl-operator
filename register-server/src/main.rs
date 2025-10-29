@@ -6,7 +6,6 @@
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use clevis_pin_trustee_lib::{Config as ClevisConfig, Server as ClevisServer};
-use crds::{ConfidentialCluster, Machine};
 use env_logger::Env;
 use ignition_config::v3_5::{
     Clevis, ClevisCustom, Config as IgnitionConfig, Filesystem, Luks, Storage,
@@ -18,6 +17,8 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use uuid::Uuid;
 use warp::{http::StatusCode, reply, Filter};
+
+use cocl_operator_lib::{ConfidentialCluster, Machine, MachineSpec};
 
 #[derive(Parser)]
 #[command(name = "register-server")]
@@ -155,10 +156,11 @@ async fn create_machine(client: Client, uuid: &str, client_ip: &str) -> anyhow::
             name: Some(machine_name.clone()),
             ..Default::default()
         },
-        spec: crds::MachineSpec {
+        spec: MachineSpec {
             id: uuid.to_string(),
             address: client_ip.to_string(),
         },
+        status: None,
     };
 
     machines.create(&Default::default(), &machine).await?;

@@ -31,11 +31,11 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::trustee::{self, get_image_pcrs};
+use cocl_operator_lib::reference_values::*;
 use operator::{
     ControllerError, RvContextData, controller_error_policy, controller_info,
     create_or_info_if_exists,
 };
-use rv_store::*;
 
 const JOB_LABEL_KEY: &str = "kind";
 const PCR_COMMAND_NAME: &str = "compute-pcrs";
@@ -106,7 +106,7 @@ fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> Po
     }
 
     PodSpec {
-        service_account_name: Some("compute-pcrs".to_string()),
+        service_account_name: Some("cocl-operator".to_string()),
         containers: vec![Container {
             name: PCR_COMMAND_NAME.to_string(),
             image: Some(pcrs_compute_image.to_string()),
