@@ -113,7 +113,10 @@ clippy: crds-rs
 vet:
 	go vet ./...
 
-lint: fmt-check clippy vet
+equal-conditions:
+	cargo test --test equal_conditions
+
+lint: fmt-check clippy vet equal-conditions
 
 test:
 	cargo test --workspace --all-targets

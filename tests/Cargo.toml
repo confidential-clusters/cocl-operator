@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "cocl-operator-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+regex = "1.12.2"
+
+[[test]]
+name = "equal_conditions"
+path = "equal_conditions.rs"
