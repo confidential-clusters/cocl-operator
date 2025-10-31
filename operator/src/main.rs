@@ -199,3 +199,91 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use cocl_operator_lib::ConfidentialClusterSpec;
+    use http::{Method, Request, StatusCode};
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
+    use kube::{api::ObjectList, client::Body};
+
+    use super::*;
+    use crate::mock_client::*;
+
+    fn dummy_cocl() -> ConfidentialCluster {
+        ConfidentialCluster {
+            metadata: ObjectMeta {
+                name: Some("test".to_string()),
+                ..Default::default()
+            },
+            status: None,
+            spec: ConfidentialClusterSpec {
+                trustee_image: "".to_string(),
+                pcrs_compute_image: "".to_string(),
+                register_server_image: "".to_string(),
+                public_trustee_addr: None,
+                register_server_port: None,
+                trustee_kbs_port: None,
+            },
+        }
+    }
+
+    async fn assert_body_contains(req: Request<Body>, contains: &str) {
+        let bytes = req.into_body().collect_bytes().await.unwrap().to_vec();
+        let body = String::from_utf8_lossy(&bytes);
+        assert!(body.contains(contains));
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_uninstalling() {
+        let clos = async |req: Request<Body>| match req {
+            r if r.method() == Method::GET => Ok(serde_json::to_string(&dummy_cocl()).unwrap()),
+            r if r.method() == Method::PATCH => {
+                assert_body_contains(r, NOT_INSTALLED_REASON_UNINSTALLING).await;
+                Ok(serde_json::to_string(&dummy_cocl()).unwrap())
+            }
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        let mut cocl = dummy_cocl();
+        cocl.metadata.deletion_timestamp = Some(Time(Utc::now()));
+        let result = reconcile(Arc::new(cocl), Arc::new(client)).await.unwrap();
+        assert_eq!(result, Action::await_change());
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_non_unique() {
+        let clos = async |req: Request<_>| match req {
+            r if r.method() == Method::GET => {
+                let object_list = ObjectList::<ConfidentialCluster> {
+                    items: vec![dummy_cocl(), dummy_cocl()],
+                    types: Default::default(),
+                    metadata: Default::default(),
+                };
+                Ok(serde_json::to_string(&object_list).unwrap())
+            }
+            r if r.method() == Method::PATCH => {
+                assert_body_contains(r, NOT_INSTALLED_REASON_NON_UNIQUE).await;
+                Ok(serde_json::to_string(&dummy_cocl()).unwrap())
+            }
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        let cocl = dummy_cocl();
+        let result = reconcile(Arc::new(cocl), Arc::new(client)).await.unwrap();
+        assert_eq!(result, Action::requeue(Duration::from_secs(60)));
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_error() {
+        let clos = async |req: Request<_>| match req {
+            r if r.method() == Method::GET => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            _ => panic!("unexpected API interaction: {req:?}"),
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
+        let cocl = dummy_cocl();
+        let result = reconcile(Arc::new(cocl), Arc::new(client)).await;
+        assert!(result.is_err());
+    }
+}
