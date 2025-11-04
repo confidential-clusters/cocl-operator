@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+name: "Go"
+on:
+  pull_request:
+    branches:
+      - "main"
+permissions:
+  contents: "read"
+
+# Don't waste job slots on superseded code
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "Build"
+    runs-on: "ubuntu-24.04"
+    steps:
+      - name: "Check out repository"
+        uses: actions/checkout@v5
+      - name: "Install Go toolchain"
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: "Build api/"
+        run: go build -C api

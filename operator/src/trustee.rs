@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
 use clevis_pin_trustee_lib::Key as ClevisKey;
+use cocl_operator_lib::reference_values::*;
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{
@@ -23,7 +24,6 @@ use kube::api::{ObjectMeta, Patch};
 use kube::{Api, Client, Resource, ResourceExt};
 use log::info;
 use operator::{RvContextData, create_or_info_if_exists, create_or_update};
-use rv_store::*;
 use serde::{Serialize, Serializer};
 use serde_json::Value::String as JsonString;
 use std::collections::BTreeMap;
@@ -213,7 +213,7 @@ pub async fn generate_trustee_data(client: Client, owner_reference: OwnerReferen
     let data = BTreeMap::from([
         ("kbs-config.toml".to_string(), kbs_config.to_string()),
         ("policy.rego".to_string(), policy_rego.to_string()),
-        (REFERENCE_VALUES_FILE.to_string(), "{}".to_string()),
+        (REFERENCE_VALUES_FILE.to_string(), "[]".to_string()),
     ]);
 
     let config_map = ConfigMap {
@@ -354,6 +354,7 @@ pub async fn generate_kbs_deployment(
             ..Default::default()
         },
         spec: Some(DeploymentSpec {
+            replicas: Some(1),
             selector: LabelSelector {
                 match_labels: selector.clone(),
                 ..Default::default()
@@ -377,6 +378,7 @@ pub async fn generate_kbs_deployment(
 mod tests {
     use super::*;
     use crate::mock_client::*;
+    use cocl_operator_lib::reference_values::ImagePcr;
     use compute_pcrs_lib::Pcr;
     use http::{Method, Request, StatusCode};
     use serde::Deserialize;
@@ -543,6 +545,7 @@ mod tests {
     fn dummy_deployment() -> Deployment {
         Deployment {
             spec: Some(DeploymentSpec {
+                replicas: Some(1),
                 template: PodTemplateSpec {
                     spec: Some(PodSpec {
                         containers: vec![Container::default()],

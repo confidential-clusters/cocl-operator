@@ -4,9 +4,10 @@ version = 1
 path = [
   "README.md",
   "Cargo.lock",
+  "go.sum",
+  "PROJECT",
   "operator/src/kbs-config.toml",
   "operator/src/resource.rego",
-  "operator/src/rvps-config.json",
   "operator/src/tpm.rego",
   "docs/pics/*",
   "docs/design/*"

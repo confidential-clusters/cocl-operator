@@ -376,6 +376,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cocl-operator-lib"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "compute-pcrs-lib",
+ "k8s-openapi",
+ "kube",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cocl-operator-tests"
+version = "0.1.0"
+dependencies = [
+ "regex",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -388,10 +407,10 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "cocl-operator-lib",
  "compute-pcrs-lib",
  "k8s-openapi",
  "kube",
- "rv-store",
  "serde_json",
  "tokio",
 ]
@@ -483,19 +502,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "crds"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "k8s-openapi",
- "kube",
- "kube-derive",
- "schemars",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1891,20 +1897,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
-name = "manifest-gen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "crds",
- "env_logger",
- "k8s-openapi",
- "kube",
- "log",
- "serde_yaml",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2194,8 +2186,8 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clevis-pin-trustee-lib",
+ "cocl-operator-lib",
  "compute-pcrs-lib",
- "crds",
  "env_logger",
  "futures-util",
  "hex",
@@ -2208,7 +2200,6 @@ dependencies = [
  "oci-client",
  "oci-spec",
  "openssl",
- "rv-store",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -2528,9 +2519,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.11.1"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b544ef1b4eac5dc2db33ea63606ae9ffcfac26c1416a2806ae0bf5f56b201191"
+checksum = "843bc0191f75f3e22651ae5f1e72939ab2f72a4bc30fa80a066bd66edefc24d4"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2540,9 +2531,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.9"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
+checksum = "5276caf25ac86c8d810222b3dbb938e512c55c6831a10f3e6ed1c93b84041f1c"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2562,7 +2553,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clevis-pin-trustee-lib",
- "crds",
+ "cocl-operator-lib",
  "env_logger",
  "ignition-config",
  "k8s-openapi",
@@ -2771,15 +2762,6 @@ name = "rustversion"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
-
-[[package]]
-name = "rv-store"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "compute-pcrs-lib",
- "serde",
-]
 
 [[package]]
 name = "ryu"

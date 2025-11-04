@@ -10,14 +10,13 @@ ARG build_type
 WORKDIR /cocl-operator
 
 COPY Cargo.toml Cargo.lock .
-COPY crds crds
-COPY rv-store rv-store
+COPY lib lib
 COPY operator/Cargo.toml operator/
 COPY operator/src/lib.rs operator/src/
 
 # Set only required crates as members to minimize rebuilds upon changes.
 # Build dependencies in lower layer to make use of caching.
-RUN sed -i 's/members = .*/members = ["crds", "operator", "rv-store"]/' Cargo.toml && \
+RUN sed -i 's/members = .*/members = ["lib", "operator"]/' Cargo.toml && \
     cargo build -p operator --lib $(if [ "$build_type" = release ]; then echo --release; fi)
 
 # Target build stage

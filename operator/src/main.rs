@@ -7,6 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use cocl_operator_lib::conditions::*;
+use cocl_operator_lib::{ConfidentialCluster, ConfidentialClusterStatus};
 use env_logger::Env;
 use futures_util::StreamExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
@@ -21,13 +23,14 @@ use kube::{
 };
 use log::{error, info, warn};
 
-use crds::conditions::{installed_condition, known_trustee_address_condition};
-use crds::{ConfidentialCluster, ConfidentialClusterStatus, NotInstalledReason};
+mod conditions;
 #[cfg(test)]
 mod mock_client;
 mod reference_values;
 mod register_server;
 mod trustee;
+
+use crate::conditions::*;
 
 // tagged as 42.20250705.3.0
 const BOOT_IMAGE: &str = "quay.io/confidential-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5";
@@ -35,7 +38,7 @@ const BOOT_IMAGE: &str = "quay.io/confidential-clusters/fedora-coreos@sha256:e71
 fn is_new_spec(status: &Option<ConfidentialClusterStatus>, generation: Option<i64>) -> bool {
     status
         .as_ref()
-        .and_then(|s| s.conditions.first())
+        .and_then(|s| s.conditions.as_ref().and_then(|cs| cs.first()))
         .map(|c| c.observed_generation < generation)
         .unwrap_or(true)
 }
@@ -57,7 +60,10 @@ async fn reconcile(
         return Ok(Action::await_change());
     }
     let known_address = cocl.spec.public_trustee_addr.is_some();
-    let mut conditions = vec![known_trustee_address_condition(known_address, generation)];
+    let mut conditions = Some(vec![known_trustee_address_condition(
+        known_address,
+        generation,
+    )]);
 
     let kube_client = Arc::unwrap_or_clone(client);
     let namespace = kube_client.default_namespace();
@@ -74,8 +80,8 @@ async fn reconcile(
 
     if cocl.metadata.deletion_timestamp.is_some() {
         info!("Registered deletion of ConfidentialCluster {name}");
-        let condition = installed_condition(Some(NotInstalledReason::Uninstalling), generation);
-        conditions.push(condition);
+        let condition = installed_condition(NOT_INSTALLED_REASON_INSTALLING, generation);
+        conditions.as_mut().unwrap().push(condition);
         update_status!(cocls, name, ConfidentialClusterStatus { conditions });
         return Ok(Action::await_change());
     }
@@ -87,16 +93,16 @@ async fn reconcile(
             "More than one ConfidentialCluster found in namespace {namespace}. \
              cocl-operator does not support more than one ConfidentialCluster. Requeueing...",
         );
-        let condition = installed_condition(Some(NotInstalledReason::NonUnique), generation);
-        conditions.push(condition);
+        let condition = installed_condition(NOT_INSTALLED_REASON_NON_UNIQUE, generation);
+        conditions.as_mut().unwrap().push(condition);
         update_status!(cocls, name, ConfidentialClusterStatus { conditions });
         return Ok(Action::requeue(Duration::from_secs(60)));
     }
 
     info!("Setting up ConfidentialCluster {name}");
     let mut installing = conditions.clone();
-    let condition = installed_condition(Some(NotInstalledReason::Installing), generation);
-    installing.push(condition);
+    let condition = installed_condition(NOT_INSTALLED_REASON_INSTALLING, generation);
+    installing.as_mut().unwrap().push(condition);
     let status = ConfidentialClusterStatus {
         conditions: installing,
     };
@@ -105,7 +111,8 @@ async fn reconcile(
     let redeploying = cocl.metadata.generation.map(|g| g > 1).unwrap_or(false);
     install_trustee_configuration(kube_client.clone(), &cocl, redeploying).await?;
     install_register_server(kube_client, &cocl, redeploying).await?;
-    conditions.push(installed_condition(None, generation));
+    let condition = installed_condition(INSTALLED_REASON, generation);
+    conditions.as_mut().unwrap().push(condition);
     update_status!(cocls, name, ConfidentialClusterStatus { conditions });
     Ok(Action::await_change())
 }
@@ -182,11 +189,6 @@ async fn install_register_server(
     redeploying: bool,
 ) -> Result<()> {
     let owner_reference = generate_owner_reference(&cocl.metadata)?;
-
-    match register_server::create_register_server_rbac(client.clone()).await {
-        Ok(_) => info!("Register server RBAC created/updated successfully"),
-        Err(e) => error!("Failed to create register server RBAC: {e}"),
-    }
 
     match register_server::create_register_server_deployment(
         client.clone(),

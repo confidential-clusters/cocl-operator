@@ -4,16 +4,13 @@
 // SPDX-License-Identifier: MIT
 
 use anyhow::Result;
-use crds::{ConfidentialCluster, Machine};
 use futures_util::StreamExt;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
         core::v1::{
-            Container, ContainerPort, PodSpec, PodTemplateSpec, Service, ServiceAccount,
-            ServicePort, ServiceSpec,
+            Container, ContainerPort, PodSpec, PodTemplateSpec, Service, ServicePort, ServiceSpec,
         },
-        rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject},
     },
     apimachinery::pkg::{
         apis::meta::v1::{LabelSelector, ObjectMeta, OwnerReference},
@@ -29,112 +26,10 @@ use log::info;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::trustee;
+use cocl_operator_lib::Machine;
 use operator::{ControllerError, controller_error_policy, create_or_update};
 
 const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
-
-pub async fn create_register_server_rbac(client: Client) -> Result<()> {
-    let name = "register-server";
-
-    // Create ServiceAccount
-    let service_account = ServiceAccount {
-        metadata: ObjectMeta {
-            name: Some(name.to_string()),
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-
-    let sa_api: Api<ServiceAccount> = Api::default_namespaced(client.clone());
-    match sa_api.get(name).await {
-        Ok(_) => {
-            info!("Register server service account already exists");
-        }
-        Err(_) => {
-            info!("Creating register server service account...");
-            sa_api.create(&Default::default(), &service_account).await?;
-        }
-    }
-
-    // Create Role for Machine permissions
-    let role = Role {
-        metadata: ObjectMeta {
-            name: Some(format!("{name}-role")),
-            ..Default::default()
-        },
-        rules: Some(vec![
-            PolicyRule {
-                api_groups: Some(vec![Machine::group(&()).to_string()]),
-                resources: Some(vec![Machine::plural(&()).to_string()]),
-                verbs: vec![
-                    "create".to_string(),
-                    "get".to_string(),
-                    "list".to_string(),
-                    "delete".to_string(),
-                    "watch".to_string(),
-                ],
-                ..Default::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec![ConfidentialCluster::group(&()).to_string()]),
-                resources: Some(vec![ConfidentialCluster::plural(&()).to_string()]),
-                verbs: vec!["get".to_string(), "list".to_string()],
-                ..Default::default()
-            },
-        ]),
-    };
-
-    let role_api: Api<Role> = Api::default_namespaced(client.clone());
-    let role_name = format!("{name}-role");
-    match role_api.get(&role_name).await {
-        Ok(_) => {
-            info!("Register server role already exists, updating...");
-            role_api
-                .replace(&role_name, &Default::default(), &role)
-                .await?;
-        }
-        Err(_) => {
-            info!("Creating register server role...");
-            role_api.create(&Default::default(), &role).await?;
-        }
-    }
-
-    // Create RoleBinding
-    let role_binding = RoleBinding {
-        metadata: ObjectMeta {
-            name: Some(format!("{name}-rolebinding")),
-            ..Default::default()
-        },
-        role_ref: RoleRef {
-            api_group: "rbac.authorization.k8s.io".to_string(),
-            kind: "Role".to_string(),
-            name: role_name,
-        },
-        subjects: Some(vec![Subject {
-            kind: "ServiceAccount".to_string(),
-            name: name.to_string(),
-            ..Default::default()
-        }]),
-    };
-
-    let rb_api: Api<RoleBinding> = Api::default_namespaced(client);
-    let rb_name = format!("{name}-rolebinding");
-    match rb_api.get(&rb_name).await {
-        Ok(_) => {
-            info!("Register server role binding already exists, updating...");
-            rb_api
-                .replace(&rb_name, &Default::default(), &role_binding)
-                .await?;
-        }
-        Err(_) => {
-            info!("Creating register server role binding...");
-            rb_api.create(&Default::default(), &role_binding).await?;
-        }
-    }
-
-    info!("Register server RBAC created/updated successfully");
-    Ok(())
-}
 
 pub async fn create_register_server_deployment(
     client: Client,
@@ -149,7 +44,6 @@ pub async fn create_register_server_deployment(
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             owner_references: Some(vec![owner_reference]),
-            labels: Some(labels.clone()),
             ..Default::default()
         },
         spec: Some(DeploymentSpec {
@@ -164,14 +58,12 @@ pub async fn create_register_server_deployment(
                     ..Default::default()
                 }),
                 spec: Some(PodSpec {
-                    service_account_name: Some(name.to_string()),
+                    service_account_name: Some("cocl-operator".to_string()),
                     containers: vec![Container {
                         name: name.to_string(),
                         image: Some(image.to_string()),
                         ports: Some(vec![ContainerPort {
                             container_port: INTERNAL_REGISTER_SERVER_PORT,
-                            name: Some("http".to_string()),
-                            protocol: Some("TCP".to_string()),
                             ..Default::default()
                         }]),
                         args: Some(vec![
