@@ -11,7 +11,9 @@ path = [
   "operator/src/tpm.rego",
   "docs/pics/*",
   "docs/design/*",
-  "tests/README.md"
+  "tests/README.md",
+  "examples/vm-coreos-ign.yaml",
+  "scripts/install-kubevirt.sh"
 ]
 SPDX-FileCopyrightText = [
     "Alice Frosi <afrosi@redhat.com>",
