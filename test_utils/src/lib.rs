@@ -15,6 +15,9 @@ use tokio::process::Command;
 pub mod timer;
 pub use timer::Poller;
 
+#[cfg(feature = "virtualization")]
+pub mod virt;
+
 use compute_pcrs_lib::Pcr;
 
 pub fn compare_pcrs(actual: &[Pcr], expected: &[Pcr]) -> bool {
@@ -87,6 +90,10 @@ impl TestContext {
 
     pub fn namespace(&self) -> &str {
         &self.test_namespace
+    }
+
+    pub fn info(&self, message: impl std::fmt::Display) {
+        test_info!(&self.test_name, "{}", message);
     }
 
     pub async fn cleanup(&self) -> anyhow::Result<()> {
@@ -505,6 +512,19 @@ resources:
 #[macro_export]
 macro_rules! named_test {
     (async fn $name:ident() -> anyhow::Result<()> { $($body:tt)* }) => {
+        #[tokio::test]
+        async fn $name() -> anyhow::Result<()> {
+            const TEST_NAME: &str = stringify!($name);
+            $($body)*
+        }
+    };
+}
+
+// virt_test labels the tests that require virtualization
+#[macro_export]
+macro_rules! virt_test {
+    (async fn $name:ident() -> anyhow::Result<()> { $($body:tt)* }) => {
+        #[cfg(feature = "virtualization")]
         #[tokio::test]
         async fn $name() -> anyhow::Result<()> {
             const TEST_NAME: &str = stringify!($name);
