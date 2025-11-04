@@ -14,7 +14,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 anyhow = "1.0.100"
 chrono = "0.4.42"
-clap = { version = "4.5.50", features = ["derive"] }
+clap = { version = "4.5.51", features = ["derive"] }
 clevis-pin-trustee-lib = { git = "https://github.com/latchset/clevis-pin-trustee" }
 compute-pcrs-lib = { git = "https://github.com/confidential-clusters/compute-pcrs" }
 env_logger = "0.11.8"
