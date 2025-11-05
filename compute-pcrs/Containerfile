@@ -6,10 +6,13 @@
 ARG build_type
 FROM ghcr.io/confidential-clusters/buildroot AS builder
 ARG build_type
-WORKDIR /compute-pcrs
+WORKDIR /build
 
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock go.mod go.sum Makefile .
+COPY api api
 COPY lib lib
+RUN make crds-rs
+
 COPY compute-pcrs/Cargo.toml compute-pcrs/
 COPY compute-pcrs/src/lib.rs compute-pcrs/src/
 
@@ -24,5 +27,5 @@ RUN cargo build -p compute-pcrs $(if [ "$build_type" = release ]; then echo --re
 
 FROM quay.io/fedora/fedora:42
 ARG build_type
-COPY --from=builder "/compute-pcrs/target/$build_type/compute-pcrs" /usr/bin
-COPY --from=builder /compute-pcrs/reference-values /reference-values
+COPY --from=builder "/build/target/$build_type/compute-pcrs" /usr/bin
+COPY --from=builder /build/reference-values /reference-values

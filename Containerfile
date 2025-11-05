@@ -7,10 +7,13 @@ ARG build_type
 # Dependency build stage
 FROM ghcr.io/confidential-clusters/buildroot AS builder
 ARG build_type
-WORKDIR /cocl-operator
+WORKDIR /build
 
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock go.mod go.sum Makefile .
+COPY api api
 COPY lib lib
+RUN make crds-rs
+
 COPY operator/Cargo.toml operator/
 COPY operator/src/lib.rs operator/src/
 
@@ -26,4 +29,4 @@ RUN cargo build -p operator $(if [ "$build_type" = release ]; then echo --releas
 # Distribution stage
 FROM quay.io/fedora/fedora:42
 ARG build_type
-COPY --from=builder "/cocl-operator/target/$build_type/operator" /usr/bin
+COPY --from=builder "/build/target/$build_type/operator" /usr/bin
