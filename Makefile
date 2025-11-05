@@ -129,10 +129,10 @@ equal-conditions:
 
 lint: fmt-check clippy vet equal-conditions
 
-test:
+test: crds-rs
 	cargo test --workspace --bins
 
-test-release:
+test-release: crds-rs
 	cargo test --workspace --bins --release
 
 integration-tests:
