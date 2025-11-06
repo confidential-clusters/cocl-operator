@@ -23,7 +23,7 @@ within the cluster.
 ### Prerequisites
 
 -   Rust toolchain
--   `podman` or `docker`
+-   `podman` or `docker` (set `RUNTIME` environment variable accordingly)
 -   `kubectl`
 -   `kind`
 
@@ -40,7 +40,19 @@ $ ip route
 192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1
 ...
 $ ip=192.168.122.1
-``
+```
+
+To use Docker:
+```bash
+export RUNTIME=docker
+```
+
+To use Podman (this export can be omitted as Podman is the default):
+```bash
+export RUNTIME=podman
+```
+
+Then run the following commands:
 
 ```bash
 make cluster-up
