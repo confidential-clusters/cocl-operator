@@ -4,7 +4,7 @@
 
 use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, Time};
-use trusted_cluster_operator_lib::conditions::*;
+use trusted_cluster_operator_lib::{condition_status, conditions::*};
 
 pub fn known_trustee_address_condition(known: bool, generation: Option<i64>) -> Condition {
     let err = "No publicTrusteeAddr specified. Components can deploy, \

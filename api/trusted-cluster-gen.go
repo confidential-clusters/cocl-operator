@@ -28,6 +28,7 @@ type Args struct {
 	trusteeImage        string
 	pcrsComputeImage    string
 	registerServerImage string
+	approvedImage       string
 }
 
 func main() {
@@ -38,6 +39,7 @@ func main() {
 	flag.StringVar(&args.trusteeImage, "trustee-image", "operators", "Container image with all-in-one Trustee")
 	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/trusted-execution-clusters/compute-pcrs:latest", "Container image with the Trusted Execution Clusters compute-pcrs binary")
 	flag.StringVar(&args.registerServerImage, "register-server-image", "quay.io/trusted-execution-clusters/register-server:latest", "Register server image to use in the deployment")
+	flag.StringVar(&args.approvedImage, "approved-image", "", "When set, defines an initial approved image. Must be a bootable container image with SHA reference.")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags)
@@ -52,6 +54,9 @@ func main() {
 	}
 	if err := generateTrustedExecutionClusterCR(&args); err != nil {
 		log.Fatalf("Failed to generate TrustedExecutionCluster CR: %v", err)
+	}
+	if err := generateApprovedImageCR(&args); err != nil {
+		log.Fatalf("Failed to generate ApprovedImage CR: %v", err)
 	}
 }
 
@@ -153,6 +158,38 @@ func generateTrustedExecutionClusterCR(args *Args) error {
 	}
 
 	log.Printf("Generated TrustedExecutionCluster CR at %s", outputPath)
+	return nil
+}
+
+func generateApprovedImageCR(args *Args) error {
+	if args.approvedImage == "" {
+		return nil
+	}
+
+	approvedImage := &v1alpha1.ApprovedImage{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1alpha1.GroupVersion.String(),
+			Kind:       "ApprovedImage",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "coreos",
+			Namespace: args.namespace,
+		},
+		Spec: v1alpha1.ApprovedImageSpec{
+			Reference: &args.approvedImage,
+		},
+	}
+
+	approvedImageYAML, err := yaml.Marshal(approvedImage)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ApprovedImage CR: %v", err)
+	}
+
+	outputPath := filepath.Join(args.outputDir, "approved_image_cr.yaml")
+	if err := writeResources(outputPath, []string{string(approvedImageYAML)}); err != nil {
+		return fmt.Errorf("failed to write %s: %v", outputPath, err)
+	}
+	log.Printf("Generated ApprovedImage CR at %s", outputPath)
 	return nil
 }
 

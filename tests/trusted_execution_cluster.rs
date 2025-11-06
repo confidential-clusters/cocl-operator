@@ -7,9 +7,11 @@ use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Api, api::DeleteParams};
 use std::time::Duration;
-use trusted_cluster_operator_lib::TrustedExecutionCluster;
 use trusted_cluster_operator_lib::reference_values::ImagePcrs;
+use trusted_cluster_operator_lib::{ApprovedImage, TrustedExecutionCluster};
 use trusted_cluster_operator_test_utils::*;
+
+const EXPECTED_PCR4: &str = "551bbd142a716c67cd78336593c2eb3b547b575e810ced4501d761082b5cd4a8";
 
 named_test!(
     async fn test_trusted_execution_cluster_uninstall() -> anyhow::Result<()> {
@@ -93,7 +95,7 @@ async fn test_image_pcrs_configmap_updates() -> anyhow::Result<()> {
     let expected_pcrs = vec![
         Pcr {
             id: 4,
-            value: "551bbd142a716c67cd78336593c2eb3b547b575e810ced4501d761082b5cd4a8".to_string(),
+            value: EXPECTED_PCR4.to_string(),
             parts: vec![
                 Part { name: "EV_EFI_ACTION".to_string(), hash: "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba".to_string() },
                 Part { name: "EV_SEPARATOR".to_string(), hash: "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119".to_string() },
@@ -140,6 +142,39 @@ async fn test_image_pcrs_configmap_updates() -> anyhow::Result<()> {
         "At least one image should have the expected PCR values");
 
     test_ctx.cleanup().await?;
+
+    Ok(())
+}
+}
+
+named_test! {
+async fn test_image_disallow() -> anyhow::Result<()> {
+    let test_ctx = setup!().await?;
+    let client = test_ctx.client();
+    let namespace = test_ctx.namespace();
+
+    let images: Api<ApprovedImage> = Api::namespaced(client.clone(), namespace);
+    images.delete("coreos", &DeleteParams::default()).await?;
+
+    let configmap_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
+    let poller = Poller::new()
+        .with_timeout(Duration::from_secs(180))
+        .with_interval(Duration::from_secs(5))
+        .with_error_message("Reference value not removed".to_string());
+    poller.poll_async(|| {
+        let api = configmap_api.clone();
+        async move {
+            let cm = api.get("trustee-data").await?;
+            if let Some(data) = &cm.data {
+                if let Some(reference_values_json) = data.get("reference-values.json") {
+                    if !reference_values_json.contains(EXPECTED_PCR4) {
+                        return Ok(());
+                    }
+                }
+            }
+            Err(anyhow::anyhow!("Reference value not yet removed"))
+        }
+    }).await?;
 
     Ok(())
 }

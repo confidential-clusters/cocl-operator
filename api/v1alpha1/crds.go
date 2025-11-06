@@ -33,6 +33,8 @@ var (
 // +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=trustedexecutionclusters,verbs=list;watch
 // +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=trustedexecutionclusters/status,verbs=patch
 // +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=machines,verbs=create;list;delete;watch
+// +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=approvedimages,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=approvedimages/status,verbs=patch
 
 // TrustedExecutionClusterSpec defines the desired state of TrustedExecutionCluster
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.publicTrusteeAddr) || has(self.publicTrusteeAddr)", message="Value is required once set"
@@ -145,4 +147,48 @@ type MachineList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 	Items           []Machine `json:"items"`
+}
+
+// ApprovedImageSpec defines the desired state of ApprovedImage
+type ApprovedImageSpec struct {
+	// Approved image reference, specified with digest
+	// +required
+	Reference *string `json:"reference"`
+}
+
+// ApprovedImageStatus defines the observed state of ApprovedImage.
+type ApprovedImageStatus struct {
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// ApprovedImage is the Schema for the approvedimages API
+type ApprovedImage struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is a standard object metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+
+	// spec defines the desired state of ApprovedImage
+	// +required
+	Spec ApprovedImageSpec `json:"spec"`
+
+	// status defines the observed state of ApprovedImage
+	// +optional
+	Status ApprovedImageStatus `json:"status,omitempty,omitzero"`
+}
+
+// +kubebuilder:object:root=true
+
+// ApprovedImageList contains a list of ApprovedImage
+type ApprovedImageList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ApprovedImage `json:"items"`
 }
