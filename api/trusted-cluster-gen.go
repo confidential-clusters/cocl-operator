@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -40,6 +41,12 @@ func main() {
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags)
+
+	if err := os.MkdirAll(args.outputDir, 0755); err != nil {
+		log.Fatalf("Failed to create output directory %s: %v", args.outputDir, err)
+		os.Exit(1)
+	}
+
 	if err := generateOperator(&args); err != nil {
 		log.Fatalf("Failed to generate operator: %v", err)
 	}
@@ -64,8 +71,7 @@ func generateOperator(args *Args) error {
 	}
 
 	name := "trusted-cluster-operator"
-	appLabel := "trusted-cluster-operator"
-	labels := map[string]string{"app": appLabel}
+	labels := map[string]string{"app": name}
 	replicas := int32(1)
 
 	templateSpec := corev1.PodTemplateSpec{
@@ -106,22 +112,18 @@ func generateOperator(args *Args) error {
 		return fmt.Errorf("failed to marshal deployment: %w", err)
 	}
 
-	if err := os.MkdirAll(args.outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
 	outputPath := filepath.Join(args.outputDir, "operator.yaml")
-	combinedYAML := fmt.Sprintf("%s\n---\n%s", nsYAML, operatorYAML)
-
-	if err := os.WriteFile(outputPath, []byte(combinedYAML), 0644); err != nil {
-		return fmt.Errorf("failed to write operator.yaml: %w", err)
+	operatorResources := []string{string(nsYAML), string(operatorYAML)}
+	if err := writeResources(outputPath, operatorResources); err != nil {
+		return fmt.Errorf("failed to write %s: %v", outputPath, err)
 	}
 
-	log.Printf("Generated operator deployment and namespace at '%s'", outputPath)
+	log.Printf("Generated operator deployment and namespace at %s", outputPath)
 	return nil
 }
 
 func generateTrustedExecutionClusterCR(args *Args) error {
-	sample := &v1alpha1.TrustedExecutionCluster{
+	cluster := &v1alpha1.TrustedExecutionCluster{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: v1alpha1.GroupVersion.String(),
 			Kind:       "TrustedExecutionCluster",
@@ -140,16 +142,20 @@ func generateTrustedExecutionClusterCR(args *Args) error {
 		},
 	}
 
-	yamlData, err := yaml.Marshal(sample)
+	clusterYAML, err := yaml.Marshal(cluster)
 	if err != nil {
 		return fmt.Errorf("failed to marshal TrustedExecutionCluster CR: %w", err)
 	}
 
 	outputPath := filepath.Join(args.outputDir, "trusted_execution_cluster_cr.yaml")
-	if err := os.WriteFile(outputPath, yamlData, 0644); err != nil {
-		return fmt.Errorf("failed to write trusted_execution_cluster_cr.yaml: %w", err)
+	if err := writeResources(outputPath, []string{string(clusterYAML)}); err != nil {
+		return fmt.Errorf("failed to write %s: %v", outputPath, err)
 	}
 
 	log.Printf("Generated TrustedExecutionCluster CR at %s", outputPath)
 	return nil
+}
+
+func writeResources(path string, resources []string) error {
+	return os.WriteFile(path, []byte(strings.Join(resources, "---\n")), 0644)
 }
