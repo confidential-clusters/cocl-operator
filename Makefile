@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-.PHONY: all build crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
+.PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
 NAMESPACE ?= confidential-clusters
 
@@ -137,6 +137,8 @@ $(YQ): $(LOCALBIN)
 
 $(KOPIUM): $(LOCALBIN)
 	$(call cargo-install-tool,$(KOPIUM),kopium,$(KOPIUM_VERSION))
+
+build-tools: $(CONTROLLER_GEN) $(KOPIUM)
 
 define go-install-tool
 [ -f "$(1)" ] || { \
