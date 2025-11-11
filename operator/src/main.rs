@@ -66,16 +66,8 @@ async fn reconcile(
     )]);
 
     let kube_client = Arc::unwrap_or_clone(client);
-    let namespace = kube_client.default_namespace();
-    let cocl_name = &cocl.metadata.name;
-    if cocl_name.is_none() {
-        warn!(
-            "A ConfidentialCluster was found in {namespace}, but it had no name. \
-             cocl-operator does not support unnamed ConfidentialClusters. Requeueing...",
-        );
-        return Ok(Action::requeue(Duration::from_secs(60)));
-    }
-    let name = cocl_name.as_ref().unwrap();
+    let err = "cocl had no name";
+    let name = &cocl.metadata.name.clone().expect(err);
     let cocls: Api<ConfidentialCluster> = Api::default_namespaced(kube_client.clone());
 
     if cocl.metadata.deletion_timestamp.is_some() {
@@ -89,6 +81,7 @@ async fn reconcile(
     let list = cocls.list(&Default::default()).await;
     let cocl_list = list.map_err(Into::<anyhow::Error>::into)?;
     if cocl_list.items.len() > 1 {
+        let namespace = kube_client.default_namespace();
         warn!(
             "More than one ConfidentialCluster found in namespace {namespace}. \
              cocl-operator does not support more than one ConfidentialCluster. Requeueing...",
