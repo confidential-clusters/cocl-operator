@@ -35,6 +35,7 @@ var (
 // +kubebuilder:rbac:groups=confidential-clusters.io,resources=machines,verbs=create;list;delete;watch
 
 // ConfidentialClusterSpec defines the desired state of ConfidentialCluster
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.publicTrusteeAddr) || has(self.publicTrusteeAddr)", message="Value is required once set"
 type ConfidentialClusterSpec struct {
 	// Image reference to Trustee all-in-one image
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
@@ -50,6 +51,7 @@ type ConfidentialClusterSpec struct {
 
 	// Address where attester can connect to Trustee
 	// +optional
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	PublicTrusteeAddr *string `json:"publicTrusteeAddr,omitempty"`
 
 	// Port that Trustee serves on
