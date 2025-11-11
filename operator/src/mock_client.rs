@@ -31,10 +31,10 @@ macro_rules! assert_kube_api_error {
     }};
 }
 
-async fn create_response(
-    response: Result<String, StatusCode>,
+async fn create_response<T: Future<Output = Result<String, StatusCode>>>(
+    response: T,
 ) -> Result<Response<Body>, Infallible> {
-    let (body, status_code) = match response {
+    let (body, status_code) = match response.await {
         Ok(response_data) => (Body::from(response_data.into_bytes()), StatusCode::OK),
         Err(status_code) => {
             let unknown_msg = format!("error with status code {status_code}");
@@ -60,17 +60,19 @@ async fn create_response(
 
 pub(crate) use assert_kube_api_error;
 
-pub struct MockClient<F>
+pub struct MockClient<F, T>
 where
-    F: Fn(&Request<Body>) -> Result<String, StatusCode> + Send + 'static,
+    F: Fn(Request<Body>) -> T + Send + Sync + 'static,
+    T: Future<Output = Result<String, StatusCode>> + Send + 'static,
 {
     response_closure: F,
     namespace: String,
 }
 
-impl<F> MockClient<F>
+impl<F, T> MockClient<F, T>
 where
-    F: Fn(&Request<Body>) -> Result<String, StatusCode> + Send + 'static,
+    F: Fn(Request<Body>) -> T + Send + Sync + 'static,
+    T: Future<Output = Result<String, StatusCode>> + Send + 'static,
 {
     pub fn new(response_closure: F, namespace: String) -> Self {
         Self {
@@ -82,7 +84,7 @@ where
     pub fn into_client(self) -> Client {
         let namespace = self.namespace.clone();
         let mock_svc = service_fn(move |req: Request<Body>| {
-            let response = (self.response_closure)(&req);
+            let response = (self.response_closure)(req);
             create_response(response)
         });
         Client::new(mock_svc, namespace)
@@ -96,7 +98,7 @@ pub async fn test_create_success<
 >(
     create: F,
 ) {
-    let clos = |_: &_| Ok(serde_json::to_string(&T::default()).unwrap());
+    let clos = async |_| Ok(serde_json::to_string(&T::default()).unwrap());
     let client = MockClient::new(clos, "test".to_string()).into_client();
     assert!(create(client).await.is_ok());
 }
@@ -107,7 +109,7 @@ pub async fn test_create_already_exists<
 >(
     create: F,
 ) {
-    let clos = |req: &Request<_>| match req {
+    let clos = async |req: Request<_>| match req {
         r if r.method() == Method::POST => Err(StatusCode::CONFLICT),
         _ => panic!("unexpected API interaction: {req:?}"),
     };
@@ -122,7 +124,7 @@ pub async fn test_replace<
 >(
     create: F,
 ) {
-    let clos = |req: &Request<_>| match req {
+    let clos = async |req: Request<_>| match req {
         r if r.method() == Method::POST => Err(StatusCode::CONFLICT),
         r if [Method::GET, Method::PUT].contains(r.method()) => {
             Ok(serde_json::to_string(&T::default()).unwrap())
@@ -136,7 +138,7 @@ pub async fn test_replace<
 pub async fn test_create_error<F: Fn(Client) -> S, S: Future<Output = anyhow::Result<()>>>(
     create: F,
 ) {
-    let clos = |req: &Request<_>| match req {
+    let clos = async |req: Request<_>| match req {
         r if r.method() == Method::POST => Err(StatusCode::INTERNAL_SERVER_ERROR),
         _ => panic!("unexpected API interaction: {req:?}"),
     };

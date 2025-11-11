@@ -427,7 +427,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rvs_success() {
-        let clos = |req: &Request<_>| match req {
+        let clos = async |req: Request<_>| match req {
             r if r.uri().path().contains(PCR_CONFIG_MAP) => {
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
@@ -449,7 +449,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rvs_no_pcr_map() {
-        let clos = |req: &Request<_>| match req {
+        let clos = async |req: Request<_>| match req {
             r if r.uri().path().contains(PCR_CONFIG_MAP) && r.method() == Method::GET => {
                 Err(StatusCode::NOT_FOUND)
             }
@@ -461,7 +461,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rvs_no_trustee_map() {
-        let clos = |req: &Request<_>| match req {
+        let clos = async |req: Request<_>| match req {
             r if r.uri().path().contains(PCR_CONFIG_MAP) => {
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
@@ -476,7 +476,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rvs_no_trustee_data() {
-        let clos = |req: &Request<_>| match req {
+        let clos = async |req: Request<_>| match req {
             r if r.uri().path().contains(PCR_CONFIG_MAP) => {
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
@@ -492,7 +492,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rvs_no_file() {
-        let clos = |req: &Request<_>| match req {
+        let clos = async |req: Request<_>| match req {
             r if r.uri().path().contains(PCR_CONFIG_MAP) => {
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
@@ -535,14 +535,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_mount_secret_success() {
-        let clos = |_: &_| Ok(serde_json::to_string(&dummy_deployment()).unwrap());
+        let clos = async |_| Ok(serde_json::to_string(&dummy_deployment()).unwrap());
         let client = MockClient::new(clos, "test".to_string()).into_client();
         assert!(mount_secret(client, "id").await.is_ok());
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_depl() {
-        let clos = |req: &Request<_>| match req {
+        let clos = async |req: Request<_>| match req {
             r if r.uri().path().contains(DEPLOYMENT_NAME) && r.method() == Method::GET => {
                 Err(StatusCode::NOT_FOUND)
             }
@@ -554,42 +554,39 @@ mod tests {
 
     #[tokio::test]
     async fn test_mount_secret_no_spec() {
-        let mut depl = dummy_deployment();
-        depl.spec = None;
-        let client = MockClient::new(
-            move |_| Ok(serde_json::to_string(&depl).unwrap()),
-            "test".to_string(),
-        )
-        .into_client();
+        let clos = async |_| {
+            let mut depl = dummy_deployment();
+            depl.spec = None;
+            Ok(serde_json::to_string(&depl).unwrap())
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
         let err = mount_secret(client, "id").await.err().unwrap();
         assert!(err.to_string().contains("but had no spec"));
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_pod_spec() {
-        let mut depl = dummy_deployment();
-        let spec = depl.spec.as_mut().unwrap();
-        spec.template.spec = None;
-        let client = MockClient::new(
-            move |_| Ok(serde_json::to_string(&depl).unwrap()),
-            "test".to_string(),
-        )
-        .into_client();
+        let clos = async |_| {
+            let mut depl = dummy_deployment();
+            let spec = depl.spec.as_mut().unwrap();
+            spec.template.spec = None;
+            Ok(serde_json::to_string(&depl).unwrap())
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
         let err = mount_secret(client, "id").await.err().unwrap();
         assert!(err.to_string().contains("but had no pod spec"));
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_containers() {
-        let mut depl = dummy_deployment();
-        let spec = depl.spec.as_mut().unwrap();
-        let pod_spec = spec.template.spec.as_mut().unwrap();
-        pod_spec.containers = vec![];
-        let client = MockClient::new(
-            move |_| Ok(serde_json::to_string(&depl).unwrap()),
-            "test".to_string(),
-        )
-        .into_client();
+        let clos = async |_| {
+            let mut depl = dummy_deployment();
+            let spec = depl.spec.as_mut().unwrap();
+            let pod_spec = spec.template.spec.as_mut().unwrap();
+            pod_spec.containers = vec![];
+            Ok(serde_json::to_string(&depl).unwrap())
+        };
+        let client = MockClient::new(clos, "test".to_string()).into_client();
         let err = mount_secret(client, "id").await.err().unwrap();
         assert!(err.to_string().contains("but had no containers"));
     }
