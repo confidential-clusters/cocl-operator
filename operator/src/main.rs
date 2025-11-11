@@ -72,7 +72,7 @@ async fn reconcile(
 
     if cocl.metadata.deletion_timestamp.is_some() {
         info!("Registered deletion of ConfidentialCluster {name}");
-        let condition = installed_condition(NOT_INSTALLED_REASON_INSTALLING, generation);
+        let condition = installed_condition(NOT_INSTALLED_REASON_UNINSTALLING, generation);
         conditions.as_mut().unwrap().push(condition);
         update_status!(cocls, name, ConfidentialClusterStatus { conditions });
         return Ok(Action::await_change());
