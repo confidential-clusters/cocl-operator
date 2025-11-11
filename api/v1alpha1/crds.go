@@ -37,12 +37,15 @@ var (
 // ConfidentialClusterSpec defines the desired state of ConfidentialCluster
 type ConfidentialClusterSpec struct {
 	// Image reference to Trustee all-in-one image
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeImage *string `json:"trusteeImage"`
 
 	// Image reference to cocl-operator's compute-pcrs image
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	PcrsComputeImage *string `json:"pcrsComputeImage"`
 
 	// Image reference to cocl-operator's register-server image
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	RegisterServerImage *string `json:"registerServerImage"`
 
 	// Address where attester can connect to Trustee
@@ -51,10 +54,12 @@ type ConfidentialClusterSpec struct {
 
 	// Port that Trustee serves on
 	// +optional
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeKbsPort int32 `json:"trusteeKbsPort,omitempty"`
 
 	// Port that cocl-operator's register-server serves on
 	// +optional
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	RegisterServerPort int32 `json:"registerServerPort,omitempty"`
 }
 
