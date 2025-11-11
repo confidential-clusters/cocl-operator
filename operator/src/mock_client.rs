@@ -31,6 +31,33 @@ macro_rules! assert_kube_api_error {
     }};
 }
 
+async fn create_response(
+    response: Result<String, StatusCode>,
+) -> Result<Response<Body>, Infallible> {
+    let (body, status_code) = match response {
+        Ok(response_data) => (Body::from(response_data.into_bytes()), StatusCode::OK),
+        Err(status_code) => {
+            let unknown_msg = format!("error with status code {status_code}");
+            let (message, reason) = match status_code {
+                StatusCode::CONFLICT => ("resource already exists", "AlreadyExists"),
+                StatusCode::INTERNAL_SERVER_ERROR => ("internal server error", "ServerTimeout"),
+                StatusCode::NOT_FOUND => ("resource not found", "NotFound"),
+                StatusCode::BAD_REQUEST => ("bad request", "BadRequest"),
+                _ => (unknown_msg.as_str(), "Unknown"),
+            };
+            let error_response = ErrorResponse {
+                status: "Failure".to_string(),
+                message: message.to_string(),
+                reason: reason.to_string(),
+                code: status_code.as_u16(),
+            };
+            let error_json = serde_json::to_string(&error_response).unwrap();
+            (Body::from(error_json.into_bytes()), status_code)
+        }
+    };
+    Ok(Response::builder().status(status_code).body(body).unwrap())
+}
+
 pub(crate) use assert_kube_api_error;
 
 pub struct MockClient<F>
@@ -55,51 +82,8 @@ where
     pub fn into_client(self) -> Client {
         let namespace = self.namespace.clone();
         let mock_svc = service_fn(move |req: Request<Body>| {
-            let mut status_code = StatusCode::OK;
             let response = (self.response_closure)(&req);
-            let body = if let Ok(response_data) = response {
-                Body::from(response_data.into_bytes())
-            } else {
-                status_code = response.err().unwrap();
-                let code = status_code.as_u16();
-                let error_response = match status_code {
-                    StatusCode::CONFLICT => ErrorResponse {
-                        status: "Failure".to_string(),
-                        message: "resource already exists".to_string(),
-                        reason: "AlreadyExists".to_string(),
-                        code,
-                    },
-                    StatusCode::INTERNAL_SERVER_ERROR => ErrorResponse {
-                        status: "Failure".to_string(),
-                        message: "internal server error".to_string(),
-                        reason: "ServerTimeout".to_string(),
-                        code,
-                    },
-                    StatusCode::NOT_FOUND => ErrorResponse {
-                        status: "Failure".to_string(),
-                        message: "resource not found".to_string(),
-                        reason: "NotFound".to_string(),
-                        code,
-                    },
-                    StatusCode::BAD_REQUEST => ErrorResponse {
-                        status: "Failure".to_string(),
-                        message: "bad request".to_string(),
-                        reason: "BadRequest".to_string(),
-                        code,
-                    },
-                    _ => ErrorResponse {
-                        status: "Failure".to_string(),
-                        message: format!("error with status code {status_code}"),
-                        reason: "Unknown".to_string(),
-                        code,
-                    },
-                };
-                let error_json = serde_json::to_string(&error_response).unwrap();
-                Body::from(error_json.into_bytes())
-            };
-
-            let response = Response::builder().status(status_code).body(body).unwrap();
-            async move { Ok::<_, Infallible>(response) }
+            create_response(response)
         });
         Client::new(mock_svc, namespace)
     }
