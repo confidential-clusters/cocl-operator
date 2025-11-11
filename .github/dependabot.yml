@@ -19,6 +19,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      golang:
+        patterns:
+          - "*"
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
