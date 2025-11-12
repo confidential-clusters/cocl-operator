@@ -137,7 +137,7 @@ test-release:
 
 integration-tests:
 	RUST_LOG=info cargo test --test confidential_cluster --test attestation --features virtualization -- \
-				--no-capture  --test-threads=3
+				--no-capture  --test-threads=1
 
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
