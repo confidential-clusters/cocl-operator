@@ -60,7 +60,7 @@ cocl-gen:
 	go build -o $@ api/$@.go
 
 DEPLOY_PATH = config/deploy
-manifests: cocl-gen
+manifests: cocl-gen generate
 	./cocl-gen -output-dir $(DEPLOY_PATH) \
 		-namespace $(NAMESPACE) \
 		-image $(OPERATOR_IMAGE) \
@@ -69,21 +69,29 @@ manifests: cocl-gen
 		-register-server-image $(REG_SERVER_IMAGE)
 
 cluster-up:
-	scripts/create-cluster-kind.sh
+	RUNTIME=$(RUNTIME) scripts/create-cluster-kind.sh
 
 cluster-down:
-	scripts/delete-cluster-kind.sh
+	RUNTIME=$(RUNTIME) scripts/delete-cluster-kind.sh
+
+RUNTIME ?= podman
 
 image:
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f Containerfile .
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
+	$(RUNTIME) build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f Containerfile .
+	$(RUNTIME) build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
+	$(RUNTIME) build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
+
+ifeq ($(RUNTIME),podman)
+TLS_VERIFY_FLAG = --tls-verify=false
+else
+TLS_VERIFY_FLAG =
+endif
 
 # TODO: remove the tls-verify, right now we are pushing only on the local registry
 push: image
-	podman push $(OPERATOR_IMAGE) --tls-verify=false
-	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
-	podman push $(REG_SERVER_IMAGE) --tls-verify=false
+	$(RUNTIME) push $(OPERATOR_IMAGE) $(TLS_VERIFY_FLAG)
+	$(RUNTIME) push $(COMPUTE_PCRS_IMAGE) $(TLS_VERIFY_FLAG)
+	$(RUNTIME) push $(REG_SERVER_IMAGE) $(TLS_VERIFY_FLAG)
 
 install: $(YQ)
 ifndef TRUSTEE_ADDR

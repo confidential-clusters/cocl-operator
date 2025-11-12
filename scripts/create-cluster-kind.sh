@@ -16,7 +16,8 @@ fi
 reg_name='kind-registry'
 reg_port='5000'
 if [ "$($RUNTIME inspect -f '{{.State.Running}}' "${reg_name}" 2>/dev/null || true)" != 'true' ]; then
-  $RUNTIME run --replace --network kind \
+  $RUNTIME rm -f "${reg_name}" 2>/dev/null || true
+  $RUNTIME run --network kind \
     -d --restart=always -p "127.0.0.1:${reg_port}:5000" --name "${reg_name}" \
     registry:2
 fi
@@ -25,6 +26,7 @@ REGISTRY_DIR="/etc/containerd/certs.d/localhost:${reg_port}"
 for node in $(kind get nodes); do
   $RUNTIME exec "${node}" mkdir -p "${REGISTRY_DIR}"
   cat <<EOF | $RUNTIME exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
+server = "http://${reg_name}:5000"
 [host."http://${reg_name}:5000"]
 EOF
 done
