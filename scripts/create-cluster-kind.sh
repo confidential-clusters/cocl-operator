@@ -10,7 +10,8 @@ set -xo errexit
 . scripts/common.sh
 
 if [ "$(kind get clusters 2>/dev/null)" != "kind" ]; then
-	kind create cluster --config kind/config.yaml --wait 5m
+	kind create cluster --config kind/config.yaml
+	kubectl wait --for=condition=Ready pod -l component=kube-apiserver -n kube-system
 fi
 
 reg_name='kind-registry'
