@@ -183,16 +183,21 @@ pub async fn launch_rv_job_controller(ctx: RvContextData) {
     );
 }
 
-async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
-    // Name job by sanitized image name, plus a hash to disambiguate
-    // tags that differed only beyond the truncation limit
+// Name job by sanitized image name, plus a hash to disambiguate
+// tags that differed only beyond the truncation limit
+fn get_job_name(boot_image: &str) -> Result<String> {
     let rfc1035_boot_image = boot_image.replace(['.', ':', '/', '@', '_'], "-");
     let boot_image_hash = hash(MessageDigest::sha1(), boot_image.as_bytes())?;
     let mut boot_image_hash_str = hex::encode(boot_image_hash);
     boot_image_hash_str.truncate(10);
-    let mut job_name = format!("{PCR_COMMAND_NAME}-{boot_image_hash_str}-{rfc1035_boot_image}");
-    job_name.truncate(63);
+    let job_name = format!("{PCR_COMMAND_NAME}-{boot_image_hash_str}-{rfc1035_boot_image}");
+    let trimmed: String = job_name.chars().take(63).collect();
+    let trimmed = trimmed.trim_end_matches('-').to_string();
+    Ok(trimmed)
+}
 
+async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
+    let job_name = get_job_name(boot_image)?;
     let pod_spec = build_compute_pcrs_pod_spec(boot_image, &ctx.pcrs_compute_image);
     let job = Job {
         metadata: ObjectMeta {

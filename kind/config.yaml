@@ -18,3 +18,5 @@ nodes:
     hostPort: 8000
 featureGates:
   "ImageVolume": true
+networking:
+  disableDefaultCNI: true

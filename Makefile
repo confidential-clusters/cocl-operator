@@ -71,6 +71,12 @@ manifests: cocl-gen
 cluster-up:
 	scripts/create-cluster-kind.sh
 
+cluster-cleanup:
+	$(KUBECTL) delete -f manifests/confidential_cluster_cr.yaml
+	$(KUBECTL) delete -f manifests/confidential_cluster_crd.yaml
+	$(KUBECTL) delete -f manifests/operator.yaml
+
+
 cluster-down:
 	scripts/delete-cluster-kind.sh
 
@@ -100,6 +106,9 @@ endif
 	$(KUBECTL) apply -f kind/register-forward.yaml
 	$(KUBECTL) apply -f kind/kbs-forward.yaml
 
+install-kubevirt:
+	scripts/install-kubevirt.sh
+
 clean:
 	cargo clean
 	rm -rf bin manifests $(CRD_YAML_PATH) $(CRD_RS_PATH)
@@ -125,6 +134,10 @@ test:
 
 test-release:
 	cargo test --workspace --all-targets --release
+
+integration-tests:
+	RUST_LOG=info cargo test --test confidential_cluster --test attestation --features virtualization -- \
+				--no-capture  --test-threads=1
 
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)

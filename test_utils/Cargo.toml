@@ -1,10 +1,9 @@
-# SPDX-FileCopyrightText: Jakob Naucke <jnaucke@redhat.com>
 # SPDX-FileCopyrightText: Alice Frosi <afrosi@redhat.com>
 #
 # SPDX-License-Identifier: CC0-1.0
 
 [package]
-name = "cocl-operator-tests"
+name = "cocl-operator-test-utils"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -15,22 +14,16 @@ virtualization = []
 [dependencies]
 anyhow.workspace = true
 cocl-operator-lib = { path = "../lib" }
-cocl-operator-test-utils = { path = "../test_utils" }
 compute-pcrs-lib.workspace = true
+env_logger.workspace = true
+ignition-config = "0.5.0"
 k8s-openapi.workspace = true
 kube = { workspace = true }
-regex = "1"
+log.workspace = true
+rand_core = "0.6"
 serde_json.workspace = true
-tokio = { workspace = true }
-
-[[test]]
-name = "confidential_cluster"
-path = "confidential_cluster.rs"
-
-[[test]]
-name = "attestation"
-path = "attestation.rs"
-
-[[test]]
-name = "equal_conditions"
-path = "equal_conditions.rs"
+serde_yaml.workspace = true
+ssh-key = { version = "0.6", features = ["rsa", "std"] }
+tokio = { workspace = true, features = ["process"] }
+uuid.workspace = true
+which = "7.0"

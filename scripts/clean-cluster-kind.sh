@@ -7,7 +7,7 @@
 
 set -x
 
-source scripts/common.sh
+. scripts/common.sh
 
 for image in "$@"; do
 	if ${RUNTIME} exec -ti kind-control-plane crictl inspecti ${image} &> /dev/null ; then
