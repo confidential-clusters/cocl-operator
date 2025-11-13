@@ -130,10 +130,10 @@ equal-conditions:
 lint: fmt-check clippy vet equal-conditions
 
 test:
-	cargo test --workspace --all-targets
+	cargo test --workspace --bins
 
 test-release:
-	cargo test --workspace --all-targets --release
+	cargo test --workspace --bins --release
 
 integration-tests:
 	RUST_LOG=info cargo test --test confidential_cluster --test attestation --features virtualization -- \
