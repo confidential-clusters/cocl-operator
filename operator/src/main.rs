@@ -10,7 +10,6 @@ use anyhow::{Context, Result};
 use env_logger::Env;
 use futures_util::StreamExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, OwnerReference};
-use kube::api::Patch;
 use kube::{Api, Client, Resource};
 use kube::{
     api::ObjectMeta,
@@ -34,14 +33,6 @@ use crate::conditions::*;
 
 // tagged as 42.20250705.3.0
 const BOOT_IMAGE: &str = "quay.io/trusted-execution-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5";
-
-macro_rules! update_status {
-    ($api:ident, $name:ident, $status:expr) => {{
-        let patch = Patch::Merge(serde_json::json!({"status": $status}));
-        $api.patch_status($name, &Default::default(), &patch).await
-            .map_err(Into::<anyhow::Error>::into)?;
-    }}
-}
 
 fn is_installed(status: Option<TrustedExecutionClusterStatus>) -> bool {
     let chk = |c: &Condition| c.type_ == INSTALLED_CONDITION && c.status == "True";

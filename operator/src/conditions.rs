@@ -6,13 +6,6 @@ use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, Time};
 use trusted_cluster_operator_lib::conditions::*;
 
-pub fn condition_status(status: bool) -> String {
-    match status {
-        true => "True".to_string(),
-        false => "False".to_string(),
-    }
-}
-
 pub fn known_trustee_address_condition(known: bool, generation: Option<i64>) -> Condition {
     let err = "No publicTrusteeAddr specified. Components can deploy, \
                but register-server will not be able to point to Trustee until you add an address";
