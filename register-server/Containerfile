@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-ARG build_type
+ARG build_type=release
 FROM ghcr.io/confidential-clusters/buildroot AS builder
 ARG build_type
 WORKDIR /build
