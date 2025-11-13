@@ -35,26 +35,33 @@ var (
 // +kubebuilder:rbac:groups=confidential-clusters.io,resources=machines,verbs=create;list;delete;watch
 
 // ConfidentialClusterSpec defines the desired state of ConfidentialCluster
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.publicTrusteeAddr) || has(self.publicTrusteeAddr)", message="Value is required once set"
 type ConfidentialClusterSpec struct {
 	// Image reference to Trustee all-in-one image
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeImage *string `json:"trusteeImage"`
 
 	// Image reference to cocl-operator's compute-pcrs image
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	PcrsComputeImage *string `json:"pcrsComputeImage"`
 
 	// Image reference to cocl-operator's register-server image
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	RegisterServerImage *string `json:"registerServerImage"`
 
 	// Address where attester can connect to Trustee
 	// +optional
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	PublicTrusteeAddr *string `json:"publicTrusteeAddr,omitempty"`
 
 	// Port that Trustee serves on
 	// +optional
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeKbsPort int32 `json:"trusteeKbsPort,omitempty"`
 
 	// Port that cocl-operator's register-server serves on
 	// +optional
+  // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	RegisterServerPort int32 `json:"registerServerPort,omitempty"`
 }
 
@@ -105,15 +112,6 @@ type MachineSpec struct {
 
 // MachineStatus defines the observed state of Machine.
 type MachineStatus struct {
-	// conditions represent the current state of the Machine resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
 	// +listType=map
 	// +listMapKey=type
 	// +optional

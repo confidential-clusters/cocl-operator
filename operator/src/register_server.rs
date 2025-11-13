@@ -21,13 +21,13 @@ use kube::runtime::{
     controller::{Action, Controller},
     watcher,
 };
-use kube::{Api, Client, Resource, ResourceExt};
+use kube::{Api, Client, Resource};
 use log::info;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::trustee;
 use cocl_operator_lib::Machine;
-use operator::{ControllerError, controller_error_policy, create_or_update};
+use operator::{ControllerError, controller_error_policy, create_or_info_if_exists};
 
 const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
 
@@ -40,7 +40,7 @@ pub async fn create_register_server_deployment(
     let app_label = "register-server";
     let labels = BTreeMap::from([("app".to_string(), app_label.to_string())]);
 
-    let mut deployment = Deployment {
+    let deployment = Deployment {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             owner_references: Some(vec![owner_reference]),
@@ -80,8 +80,8 @@ pub async fn create_register_server_deployment(
         ..Default::default()
     };
 
-    create_or_update!(client, Deployment, deployment);
-    info!("Register server deployment created/updated successfully");
+    create_or_info_if_exists!(client, Deployment, deployment);
+    info!("Register server deployment created successfully");
     Ok(())
 }
 
@@ -94,7 +94,7 @@ pub async fn create_register_server_service(
     let app_label = "register-server";
     let labels = BTreeMap::from([("app".to_string(), app_label.to_string())]);
 
-    let mut service = Service {
+    let service = Service {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             labels: Some(labels.clone()),
@@ -116,8 +116,8 @@ pub async fn create_register_server_service(
         ..Default::default()
     };
 
-    create_or_update!(client, Service, service);
-    info!("Register server service created/updated successfully");
+    create_or_info_if_exists!(client, Service, service);
+    info!("Register server service created successfully");
     Ok(())
 }
 

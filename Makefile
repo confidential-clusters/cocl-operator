@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-.PHONY: all build crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
+.PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
 NAMESPACE ?= confidential-clusters
 
@@ -56,8 +56,8 @@ crds-rs: generate
 	$(MAKE) $(shell find $(CRD_YAML_PATH) -type f \
 		| sed -E 's|$(CRD_YAML_PATH)/$(YAML_PREFIX)(.*)\.yaml|$(CRD_RS_PATH)/\1.rs|')
 
-cocl-gen:
-	go build -o $@ api/$@.go
+cocl-gen: api/cocl-gen.go
+	go build -o $@ $<
 
 DEPLOY_PATH = config/deploy
 manifests: cocl-gen
@@ -150,6 +150,8 @@ $(YQ): $(LOCALBIN)
 
 $(KOPIUM): $(LOCALBIN)
 	$(call cargo-install-tool,$(KOPIUM),kopium,$(KOPIUM_VERSION))
+
+build-tools: $(CONTROLLER_GEN) $(KOPIUM)
 
 define go-install-tool
 [ -f "$(1)" ] || { \

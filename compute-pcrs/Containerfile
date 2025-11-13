@@ -8,7 +8,10 @@ FROM ghcr.io/confidential-clusters/buildroot AS builder
 ARG build_type
 WORKDIR /build
 
-COPY Cargo.toml Cargo.lock go.mod go.sum Makefile .
+COPY Makefile .
+RUN make build-tools
+
+COPY Cargo.toml Cargo.lock go.mod go.sum .
 COPY api api
 COPY lib lib
 RUN make crds-rs

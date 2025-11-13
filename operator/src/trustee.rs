@@ -21,9 +21,9 @@ use k8s_openapi::apimachinery::pkg::{
     util::intstr::IntOrString,
 };
 use kube::api::{ObjectMeta, Patch};
-use kube::{Api, Client, Resource, ResourceExt};
+use kube::{Api, Client, Resource};
 use log::info;
-use operator::{RvContextData, create_or_info_if_exists, create_or_update};
+use operator::{RvContextData, create_or_info_if_exists};
 use serde::{Serialize, Serializer};
 use serde_json::Value::String as JsonString;
 use std::collections::BTreeMap;
@@ -237,7 +237,7 @@ pub async fn generate_kbs_service(
     let svc_name = "kbs-service";
     let selector = Some(BTreeMap::from([("app".to_string(), "kbs".to_string())]));
 
-    let mut service = Service {
+    let service = Service {
         metadata: ObjectMeta {
             name: Some(svc_name.to_string()),
             owner_references: Some(vec![owner_reference.clone()]),
@@ -255,7 +255,7 @@ pub async fn generate_kbs_service(
         }),
         ..Default::default()
     };
-    create_or_update!(client, Service, service);
+    create_or_info_if_exists!(client, Service, service);
     Ok(())
 }
 
@@ -347,7 +347,7 @@ pub async fn generate_kbs_deployment(
     let pod_spec = generate_kbs_pod_spec(image);
 
     // Inspired by trustee-operator
-    let mut deployment = Deployment {
+    let deployment = Deployment {
         metadata: ObjectMeta {
             name: Some(DEPLOYMENT_NAME.to_string()),
             owner_references: Some(vec![owner_reference]),
@@ -370,7 +370,7 @@ pub async fn generate_kbs_deployment(
         }),
         ..Default::default()
     };
-    create_or_update!(client, Deployment, deployment);
+    create_or_info_if_exists!(client, Deployment, deployment);
     Ok(())
 }
 
