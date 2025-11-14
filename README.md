@@ -40,7 +40,7 @@ $ ip route
 192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1
 ...
 $ ip=192.168.122.1
-``
+```
 
 ```bash
 make cluster-up

@@ -11,7 +11,7 @@ use cocl_operator_lib::conditions::*;
 use cocl_operator_lib::{ConfidentialCluster, ConfidentialClusterStatus};
 use env_logger::Env;
 use futures_util::StreamExt;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, OwnerReference};
 use kube::api::Patch;
 use kube::{Api, Client, Resource};
 use kube::{
@@ -43,6 +43,14 @@ macro_rules! update_status {
     }}
 }
 
+fn is_installed(status: Option<ConfidentialClusterStatus>) -> bool {
+    let chk = |c: &Condition| c.type_ == INSTALLED_CONDITION && c.status == "True";
+    status
+        .and_then(|s| s.conditions)
+        .map(|cs| cs.iter().any(chk))
+        .unwrap_or(false)
+}
+
 async fn reconcile(
     cocl: Arc<ConfidentialCluster>,
     client: Arc<Client>,
@@ -62,6 +70,10 @@ async fn reconcile(
         let condition = installed_condition(NOT_INSTALLED_REASON_UNINSTALLING, generation);
         conditions.as_mut().unwrap().push(condition);
         update_status!(cocls, name, ConfidentialClusterStatus { conditions });
+        return Ok(Action::await_change());
+    }
+
+    if is_installed(cocl.status.clone()) {
         return Ok(Action::await_change());
     }
 
