@@ -272,3 +272,124 @@ pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> 
         .await?;
     trustee::update_reference_values(ctx).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_client::*;
+    use http::{Method, Request, StatusCode};
+    use k8s_openapi::api::batch::v1::JobStatus;
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
+    use kube::client::Body;
+
+    #[tokio::test]
+    async fn test_create_pcrs_cm_success() {
+        let clos = |client| create_pcrs_config_map(client, Default::default());
+        test_create_success::<_, _, ConfigMap>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_create_pcrs_cm_exists() {
+        let clos = |client| create_pcrs_config_map(client, Default::default());
+        test_create_already_exists(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_create_pcrs_cm_error() {
+        let clos = |client| create_pcrs_config_map(client, Default::default());
+        test_create_error(clos).await;
+    }
+
+    fn dummy_job() -> Job {
+        Job {
+            metadata: ObjectMeta {
+                name: Some("test".to_string()),
+                ..Default::default()
+            },
+            status: Some(JobStatus {
+                completion_time: Some(Time(Utc::now())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    async fn pcr_response(req: Request<Body>) -> Result<String, StatusCode> {
+        if req.method() == Method::DELETE {
+            Ok(serde_json::to_string(&Job::default()).unwrap())
+        } else if req.uri().path().contains(PCR_CONFIG_MAP) {
+            Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
+        } else if req.uri().path().contains(trustee::TRUSTEE_DATA_MAP) {
+            Ok(serde_json::to_string(&ConfigMap {
+                data: Some(BTreeMap::from([(
+                    trustee::REFERENCE_VALUES_FILE.to_string(),
+                    "[]".to_string(),
+                )])),
+                ..Default::default()
+            })
+            .unwrap())
+        } else {
+            panic!("unexpected API interaction: {req:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_job_reconcile_success() {
+        let ctx = generate_rv_ctx(MockClient::new(pcr_response, "test".to_string()).into_client());
+        let job = Arc::new(dummy_job());
+        let result = job_reconcile(job, Arc::new(ctx)).await.unwrap();
+        assert_eq!(result, Action::await_change());
+    }
+
+    #[tokio::test]
+    async fn test_job_reconcile_begun_deletion() {
+        let clos = async |req: Request<_>| panic!("unexpected API interaction: {req:?}");
+        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
+        let mut job = dummy_job();
+        let status = job.status.as_mut().unwrap();
+        status.completion_time = None;
+        let result = job_reconcile(Arc::new(job), Arc::new(ctx)).await.unwrap();
+        assert_eq!(result, Action::requeue(Duration::from_secs(300)));
+    }
+
+    #[test]
+    fn test_get_job_name_trailing_dash() {
+        let name = get_job_name("quay.io/some_ref:some-tag-").unwrap();
+        assert_eq!(name, "compute-pcrs-105a7802d8-quay-io-some-ref-some-tag");
+    }
+
+    #[test]
+    fn test_get_job_name_sha() {
+        let name = get_job_name("quay.io/some-ref@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5").unwrap();
+        assert_eq!(
+            name,
+            "compute-pcrs-6c57e93939-quay-io-some-ref-sha256-e71dad00aa0e3d7"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compute_fresh_pcrs_success() {
+        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
+        test_create_success::<_, _, Job>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_compute_fresh_pcrs_replace() {
+        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
+        test_replace::<_, _, Job>(clos).await;
+    }
+
+    #[tokio::test]
+    async fn test_compute_fresh_pcrs_error() {
+        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
+        test_create_error(clos).await;
+    }
+
+    // handle_new_image is an inherently online function and not tested here.
+
+    #[tokio::test]
+    async fn test_disallow_image() {
+        let ctx = generate_rv_ctx(MockClient::new(pcr_response, "test".to_string()).into_client());
+        assert!(disallow_image(ctx, "registry").await.is_ok());
+    }
+}
