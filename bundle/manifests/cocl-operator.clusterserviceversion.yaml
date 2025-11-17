@@ -68,7 +68,7 @@ spec:
               serviceAccountName: cocl-operator
               containers:
                 - name: cocl-operator
-                  image: quay.io/confidential-clusters/cocl-operator:latest
+                  image: quay.io/redhat-user-workloads/yalzhang-tenant/cocl-compute-pcrs@sha256:f34a697782996ceae2d80c16c0b0c3846ae30412f92acddd54cfaf48526fa0c6
                   command:
                   - cocl-operator
                   imagePullPolicy: Always
