@@ -15,4 +15,4 @@ for image in "$@"; do
 		${RUNTIME} exec -ti kind-control-plane crictl rmi ${image}
 	fi
 done
-kubectl delete deploy cocl-operator -n confidential-clusters || true
+kubectl delete deploy trusted-cluster-operator -n confidential-clusters || true

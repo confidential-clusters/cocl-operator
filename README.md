@@ -1,4 +1,4 @@
-# Confidential Cluster Operator (cocl-operator)
+# Confidential Cluster Operator (trusted-cluster-operator)
 
 This repository contains a Kubernetes operator for managing Confidential Clusters. The operator introduces a 
 `ConfidentialCluster` Custom Resource Definition (CRD) which allows users to declaratively manage the configuration 

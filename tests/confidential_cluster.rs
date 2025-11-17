@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: MIT
 
-use cocl_operator_lib::ConfidentialCluster;
-use cocl_operator_lib::reference_values::ImagePcrs;
-use cocl_operator_test_utils::*;
+use trusted_cluster_operator_lib::ConfidentialCluster;
+use trusted_cluster_operator_lib::reference_values::ImagePcrs;
+use trusted_cluster_operator_test_utils::*;
 use compute_pcrs_lib::{Part, Pcr};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::ConfigMap;

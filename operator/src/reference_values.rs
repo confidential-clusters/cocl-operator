@@ -31,7 +31,7 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::trustee::{self, get_image_pcrs};
-use cocl_operator_lib::reference_values::*;
+use trusted_cluster_operator_lib::reference_values::*;
 use operator::{
     ControllerError, RvContextData, controller_error_policy, controller_info,
     create_or_info_if_exists,
@@ -106,7 +106,7 @@ fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> Po
     }
 
     PodSpec {
-        service_account_name: Some("cocl-operator".to_string()),
+        service_account_name: Some("trusted-cluster-operator".to_string()),
         containers: vec![Container {
             name: PCR_COMMAND_NAME.to_string(),
             image: Some(pcrs_compute_image.to_string()),

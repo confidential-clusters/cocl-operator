@@ -244,7 +244,7 @@ impl TestContext {
 
         let crd_gen_output = Command::new(&controller_gen_path)
             .args([
-                "rbac:roleName=cocl-operator-role",
+                "rbac:roleName=trusted-cluster-operator-role",
                 "crd",
                 "webhook",
                 "paths=./...",
@@ -279,7 +279,7 @@ impl TestContext {
                 "-output-dir",
                 &self.manifests_dir,
                 "-image",
-                "localhost:5000/confidential-clusters/cocl-operator:latest",
+                "localhost:5000/confidential-clusters/trusted-cluster-operator:latest",
                 "-pcrs-compute-image",
                 "localhost:5000/confidential-clusters/compute-pcrs:latest",
                 "-trustee-image",
@@ -334,7 +334,7 @@ impl TestContext {
 
         let role_path = rbac_temp_dir.join("role.yaml");
         let role_content = std::fs::read_to_string(&role_path)?.replace(
-            "name: cocl-operator-role",
+            "name: trusted-cluster-operator-role",
             &format!("name: {}-cocl-operator-role", ns),
         );
         std::fs::write(&role_path, role_content)?;
@@ -346,8 +346,8 @@ impl TestContext {
                 &format!("name: {}-manager-rolebinding", ns),
             )
             .replace(
-                "name: cocl-operator-role",
-                &format!("name: {}-cocl-operator-role", ns),
+                "name: trusted-cluster-operator-role",
+                &format!("name: {}-trusted-cluster-operator-role", ns),
             )
             .replace("namespace: system", &format!("namespace: {}", ns));
         let rb_dst = rbac_temp_dir.join("role_binding.yaml");
@@ -459,7 +459,7 @@ resources:
 
         let deployments_api: Api<Deployment> = Api::namespaced(self.client.clone(), &ns);
 
-        self.wait_for_deployment_ready(&deployments_api, "cocl-operator", 120)
+        self.wait_for_deployment_ready(&deployments_api, "trusted-cluster-operator", 120)
             .await?;
         self.wait_for_deployment_ready(&deployments_api, "register-server", 300)
             .await?;

@@ -32,7 +32,7 @@ type Args struct {
 func main() {
 	args := Args{}
 	flag.StringVar(&args.outputDir, "output-dir", "config/deploy", "Output directory to save rendered YAML")
-	flag.StringVar(&args.image, "image", "quay.io/trusted-execution-clusters/cocl-operator:latest", "Container image to use in the deployment")
+	flag.StringVar(&args.image, "image", "quay.io/trusted-execution-clusters/trusted-cluster-operator:latest", "Container image to use in the deployment")
 	flag.StringVar(&args.namespace, "namespace", "confidential-clusters", "Namespace where to install the operator")
 	flag.StringVar(&args.trusteeImage, "trustee-image", "operators", "Container image with all-in-one Trustee")
 	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/trusted-execution-clusters/compute-pcrs:latest", "Container image with the cocl compute-pcrs binary")
@@ -63,8 +63,8 @@ func generateOperator(args *Args) error {
 		return fmt.Errorf("failed to marshal namespace: %w", err)
 	}
 
-	name := "cocl-operator"
-	appLabel := "cocl-operator"
+	name := "trusted-cluster-operator"
+	appLabel := "trusted-cluster-operator"
 	labels := map[string]string{"app": appLabel}
 	replicas := int32(1)
 

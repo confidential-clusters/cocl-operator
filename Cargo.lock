@@ -405,54 +405,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cocl-operator-lib"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "compute-pcrs-lib",
- "k8s-openapi",
- "kube",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "cocl-operator-test-utils"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cocl-operator-lib",
- "compute-pcrs-lib",
- "env_logger",
- "ignition-config",
- "k8s-openapi",
- "kube",
- "log",
- "rand_core",
- "serde_json",
- "serde_yaml",
- "ssh-key",
- "tokio",
- "uuid",
- "which",
-]
-
-[[package]]
-name = "cocl-operator-tests"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cocl-operator-lib",
- "cocl-operator-test-utils",
- "compute-pcrs-lib",
- "k8s-openapi",
- "kube",
- "regex",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -465,12 +417,12 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "cocl-operator-lib",
  "compute-pcrs-lib",
  "k8s-openapi",
  "kube",
  "serde_json",
  "tokio",
+ "trusted-cluster-operator-lib",
 ]
 
 [[package]]
@@ -2395,7 +2347,6 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clevis-pin-trustee-lib",
- "cocl-operator-lib",
  "compute-pcrs-lib",
  "env_logger",
  "futures-util",
@@ -2414,6 +2365,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tower",
+ "trusted-cluster-operator-lib",
 ]
 
 [[package]]
@@ -2838,7 +2790,6 @@ dependencies = [
  "anyhow",
  "clap",
  "clevis-pin-trustee-lib",
- "cocl-operator-lib",
  "env_logger",
  "ignition-config",
  "k8s-openapi",
@@ -2847,6 +2798,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "trusted-cluster-operator-lib",
  "uuid",
  "warp",
 ]
@@ -3810,6 +3762,54 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9d12581f227e93f094d3af2ae690a574abb8a2b9b7a96e7cfe9647b2b617678"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "trusted-cluster-operator-lib"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "compute-pcrs-lib",
+ "k8s-openapi",
+ "kube",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "trusted-cluster-operator-test-utils"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "compute-pcrs-lib",
+ "env_logger",
+ "ignition-config",
+ "k8s-openapi",
+ "kube",
+ "log",
+ "rand_core",
+ "serde_json",
+ "serde_yaml",
+ "ssh-key",
+ "tokio",
+ "trusted-cluster-operator-lib",
+ "uuid",
+ "which",
+]
+
+[[package]]
+name = "trusted-cluster-operator-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "compute-pcrs-lib",
+ "k8s-openapi",
+ "kube",
+ "regex",
+ "serde_json",
+ "tokio",
+ "trusted-cluster-operator-lib",
+ "trusted-cluster-operator-test-utils",
 ]
 
 [[package]]

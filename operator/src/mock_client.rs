@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 use chrono::Utc;
-use cocl_operator_lib::reference_values::{ImagePcr, ImagePcrs, PCR_CONFIG_FILE};
+use trusted_cluster_operator_lib::reference_values::{ImagePcr, ImagePcrs, PCR_CONFIG_FILE};
 use compute_pcrs_lib::Pcr;
 use http::{Method, Request, Response, StatusCode};
 use k8s_openapi::api::core::v1::ConfigMap;

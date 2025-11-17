@@ -19,7 +19,7 @@ KOPIUM_VERSION ?= 0.21.3
 KOPIUM ?= $(LOCALBIN)/kopium-$(KOPIUM_VERSION)
 
 REGISTRY ?= quay.io/trusted-execution-clusters
-OPERATOR_IMAGE=$(REGISTRY)/cocl-operator:latest
+OPERATOR_IMAGE=$(REGISTRY)/trusted-cluster-operator:latest
 COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:latest
 REG_SERVER_IMAGE=$(REGISTRY)/registration-server:latest
 # TODO add support for TPM AK verification, then move to a KBS with implemented verifier
@@ -39,7 +39,7 @@ reg-server: crds-rs
 CRD_YAML_PATH = config/crd
 API_PATH = api/v1alpha1
 generate: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) rbac:roleName=cocl-operator-role crd webhook paths="./..." \
+	$(CONTROLLER_GEN) rbac:roleName=trusted-cluster-operator-role crd webhook paths="./..." \
 		output:crd:artifacts:config=$(CRD_YAML_PATH)
 
 RS_LIB_PATH = lib/src

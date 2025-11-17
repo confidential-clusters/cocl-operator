@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use cocl_operator_lib::conditions::*;
-use cocl_operator_lib::{ConfidentialCluster, ConfidentialClusterStatus};
+use trusted_cluster_operator_lib::conditions::*;
+use trusted_cluster_operator_lib::{ConfidentialCluster, ConfidentialClusterStatus};
 use env_logger::Env;
 use futures_util::StreamExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, OwnerReference};
@@ -83,7 +83,7 @@ async fn reconcile(
         let namespace = kube_client.default_namespace();
         warn!(
             "More than one ConfidentialCluster found in namespace {namespace}. \
-             cocl-operator does not support more than one ConfidentialCluster. Requeueing...",
+             trusted-cluster-operator does not support more than one ConfidentialCluster. Requeueing...",
         );
         let condition = installed_condition(NOT_INSTALLED_REASON_NON_UNIQUE, generation);
         conditions.as_mut().unwrap().push(condition);
@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use cocl_operator_lib::ConfidentialClusterSpec;
+    use trusted_cluster_operator_lib::ConfidentialClusterSpec;
     use http::{Method, Request, StatusCode};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
     use kube::{api::ObjectList, client::Body};

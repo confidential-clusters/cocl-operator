@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use uuid::Uuid;
 use warp::{http::StatusCode, reply, Filter};
 
-use cocl_operator_lib::{ConfidentialCluster, Machine, MachineSpec};
+use trusted_cluster_operator_lib::{ConfidentialCluster, Machine, MachineSpec};
 
 #[derive(Parser)]
 #[command(name = "register-server")]
@@ -85,7 +85,7 @@ async fn get_public_trustee_addr(client: Client) -> anyhow::Result<String> {
     if list.items.len() != 1 {
         return Err(anyhow!(
             "More than one ConfidentialCluster found in namespace {namespace}. \
-             cocl-operator does not support more than one ConfidentialCluster. \
+             trusted-cluster-operator does not support more than one ConfidentialCluster. \
              Cancelling Ignition Clevis PIN request.",
         ));
     }

@@ -12,5 +12,5 @@ roleRef:
   name: metrics-auth-role
 subjects:
 - kind: ServiceAccount
-  name: cocl-operator
+  name: trusted-cluster-operator
   namespace: system

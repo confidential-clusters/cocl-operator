@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: MIT
 
-use cocl_operator_test_utils::*;
+use trusted_cluster_operator_test_utils::*;
 
 #[cfg(feature = "virtualization")]
-use cocl_operator_test_utils::virt;
+use trusted_cluster_operator_test_utils::virt;
 
 virt_test! {
 async fn test_attestation() -> anyhow::Result<()> {
