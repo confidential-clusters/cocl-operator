@@ -33,7 +33,7 @@ mod trustee;
 use crate::conditions::*;
 
 // tagged as 42.20250705.3.0
-const BOOT_IMAGE: &str = "quay.io/confidential-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5";
+const BOOT_IMAGE: &str = "quay.io/trusted-execution-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5";
 
 macro_rules! update_status {
     ($api:ident, $name:ident, $status:expr) => {{

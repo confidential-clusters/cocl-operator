@@ -32,11 +32,11 @@ type Args struct {
 func main() {
 	args := Args{}
 	flag.StringVar(&args.outputDir, "output-dir", "config/deploy", "Output directory to save rendered YAML")
-	flag.StringVar(&args.image, "image", "quay.io/confidential-clusters/cocl-operator:latest", "Container image to use in the deployment")
+	flag.StringVar(&args.image, "image", "quay.io/trusted-execution-clusters/cocl-operator:latest", "Container image to use in the deployment")
 	flag.StringVar(&args.namespace, "namespace", "confidential-clusters", "Namespace where to install the operator")
 	flag.StringVar(&args.trusteeImage, "trustee-image", "operators", "Container image with all-in-one Trustee")
-	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/confidential-clusters/compute-pcrs:latest", "Container image with the cocl compute-pcrs binary")
-	flag.StringVar(&args.registerServerImage, "register-server-image", "quay.io/confidential-clusters/register-server:latest", "Register server image to use in the deployment")
+	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/trusted-execution-clusters/compute-pcrs:latest", "Container image with the cocl compute-pcrs binary")
+	flag.StringVar(&args.registerServerImage, "register-server-image", "quay.io/trusted-execution-clusters/register-server:latest", "Register server image to use in the deployment")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags)

@@ -283,7 +283,7 @@ impl TestContext {
                 "-pcrs-compute-image",
                 "localhost:5000/confidential-clusters/compute-pcrs:latest",
                 "-trustee-image",
-                "quay.io/confidential-clusters/key-broker-service:tpm-verifier-built-in-as-20250711",
+                "quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711",
                 "-register-server-image",
                 "localhost:5000/confidential-clusters/registration-server:latest"
             ])
