@@ -24,8 +24,8 @@ serde_json.workspace = true
 tokio = { workspace = true }
 
 [[test]]
-name = "confidential_cluster"
-path = "confidential_cluster.rs"
+name = "trusted_execution_cluster"
+path = "trusted_execution_cluster.rs"
 
 [[test]]
 name = "attestation"

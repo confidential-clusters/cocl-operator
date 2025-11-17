@@ -2,9 +2,9 @@
 
 ## Overview
 
-Attestation in Confidential Clusters is based on PCR values reported by a TPM.
+Attestation in Trusted Execution Clusters is based on PCR values reported by a TPM.
 These values can be predicted when the exact OS the node is expected to be used is known, by means of the [compute-pcrs](https://github.com/confidential-clusters/compute-pcrs) library.
-In the design of Confidential Clusters, the OS is represented by a bootable container image with a [UKI](https://uapi-group.org/specifications/specs/unified_kernel_image).
+In the design of Trusted Execution Clusters, the OS is represented by a bootable container image with a [UKI](https://uapi-group.org/specifications/specs/unified_kernel_image).
 
 This document describes how a bootable image tag becomes approved and revoked, and how the set of approved image tags is turned into reference values to be used by Trustee's [reference value provider service](https://github.com/confidential-containers/trustee/tree/main/rvps).
 
@@ -13,7 +13,7 @@ This document describes how a bootable image tag becomes approved and revoked, a
 In OpenShift, updates to nodes are defined using Kubernetes resources.
 The `MachineConfig` CR can be applied to e.g. define the bootable image reference which nodes classified by some selector should use.
 Target machine configs are then referenced to in `MachineConfigPools`.
-Because such explicit updates are assumed to be intended by the cluster administrator, the Confidential Clusters operator can watch the MachineConfigPools and set the images that they reference as approved.
+Because such explicit updates are assumed to be intended by the cluster administrator, the Trusted Execution Clusters operator can watch the MachineConfigPools and set the images that they reference as approved.
 
 However, kubectl interaction is also supported, both for avoiding reliance on OpenShift and for manual intervention.
 
@@ -22,11 +22,11 @@ However, kubectl interaction is also supported, both for avoiding reliance on Op
 For better interaction with kubectl, approved images are specified as a very simple custom resource:
 
 ```yaml
-apiVersion: confidential-containers.io/v1alpha1
+apiVersion: trusted-execution-clusters.io/v1alpha1
 kind: ApprovedImage
 metadata:
   name: my-scos
-  namespace: confidential-clusters
+  namespace: trusted-execution-clusters
 spec:
   reference: quay.io/my-registry/scos-kernel-layer
 ```

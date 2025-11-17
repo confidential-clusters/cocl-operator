@@ -5,7 +5,7 @@
 
 .PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
 
-NAMESPACE ?= confidential-clusters
+NAMESPACE ?= trusted-execution-clusters
 
 KUBECTL=kubectl
 
@@ -27,7 +27,7 @@ TRUSTEE_IMAGE ?= quay.io/trusted-execution-clusters/key-broker-service:tpm-verif
 
 BUILD_TYPE ?= release
 
-all: build cocl-gen reg-server
+all: build trusted-cluster-gen reg-server
 
 build: crds-rs
 	cargo build -p compute-pcrs
@@ -47,7 +47,7 @@ CRD_RS_PATH = $(RS_LIB_PATH)/kopium
 $(CRD_RS_PATH):
 	mkdir $(CRD_RS_PATH)
 
-YAML_PREFIX = confidential-clusters.io_
+YAML_PREFIX = trusted-execution-clusters.io_
 $(CRD_RS_PATH)/%.rs: $(CRD_YAML_PATH)/$(YAML_PREFIX)%.yaml $(KOPIUM) $(CRD_RS_PATH)
 	$(KOPIUM) -f $< > $@
 	rustfmt $@
@@ -56,12 +56,12 @@ crds-rs: generate
 	$(MAKE) $(shell find $(CRD_YAML_PATH) -type f \
 		| sed -E 's|$(CRD_YAML_PATH)/$(YAML_PREFIX)(.*)\.yaml|$(CRD_RS_PATH)/\1.rs|')
 
-cocl-gen: api/cocl-gen.go
+trusted-cluster-gen: api/trusted-cluster-gen.go
 	go build -o $@ $<
 
 DEPLOY_PATH = config/deploy
-manifests: cocl-gen
-	./cocl-gen -output-dir $(DEPLOY_PATH) \
+manifests: trusted-cluster-gen
+	./trusted-cluster-gen -output-dir $(DEPLOY_PATH) \
 		-namespace $(NAMESPACE) \
 		-image $(OPERATOR_IMAGE) \
 		-trustee-image $(TRUSTEE_IMAGE) \
@@ -72,8 +72,8 @@ cluster-up:
 	scripts/create-cluster-kind.sh
 
 cluster-cleanup:
-	$(KUBECTL) delete -f manifests/confidential_cluster_cr.yaml
-	$(KUBECTL) delete -f manifests/confidential_cluster_crd.yaml
+	$(KUBECTL) delete -f manifests/trusted_execution_cluster_cr.yaml
+	$(KUBECTL) delete -f manifests/trusted_execution_cluster_crd.yaml
 	$(KUBECTL) delete -f manifests/operator.yaml
 
 
@@ -97,12 +97,12 @@ ifndef TRUSTEE_ADDR
 endif
 	scripts/clean-cluster-kind.sh $(OPERATOR_IMAGE) $(COMPUTE_PCRS_IMAGE) $(REG_SERVER_IMAGE)
 	$(YQ) '.spec.publicTrusteeAddr = "$(TRUSTEE_ADDR):8080"' \
-		-i $(DEPLOY_PATH)/confidential_cluster_cr.yaml
+		-i $(DEPLOY_PATH)/trusted_execution_cluster_cr.yaml
 	$(YQ) '.namespace = "$(NAMESPACE)"' -i config/rbac/kustomization.yaml
 	$(KUBECTL) apply -f $(DEPLOY_PATH)/operator.yaml
 	$(KUBECTL) apply -f config/crd
 	$(KUBECTL) apply -k config/rbac
-	$(KUBECTL) apply -f $(DEPLOY_PATH)/confidential_cluster_cr.yaml
+	$(KUBECTL) apply -f $(DEPLOY_PATH)/trusted_execution_cluster_cr.yaml
 	$(KUBECTL) apply -f kind/register-forward.yaml
 	$(KUBECTL) apply -f kind/kbs-forward.yaml
 
@@ -112,7 +112,7 @@ install-kubevirt:
 clean:
 	cargo clean
 	rm -rf bin manifests $(CRD_YAML_PATH) $(CRD_RS_PATH)
-	rm -f cocl-gen config/rbac/role.yaml .crates.toml .crates2.json
+	rm -f trusted-cluster-gen config/rbac/role.yaml .crates.toml .crates2.json
 
 fmt-check:
 	cargo fmt -- --check
@@ -136,8 +136,8 @@ test-release: crds-rs
 	cargo test --workspace --bins --release
 
 integration-tests:
-	RUST_LOG=info cargo test --test confidential_cluster --test attestation --features virtualization -- \
-				--no-capture  --test-threads=1
+	RUST_LOG=info cargo test --test trusted_execution_cluster --test attestation \
+		--features virtualization -- --no-capture  --test-threads=1
 
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)

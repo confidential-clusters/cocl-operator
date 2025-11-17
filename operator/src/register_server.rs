@@ -26,8 +26,8 @@ use log::info;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::trustee;
-use trusted_cluster_operator_lib::Machine;
 use operator::{ControllerError, controller_error_policy, create_or_info_if_exists};
+use trusted_cluster_operator_lib::Machine;
 
 const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
 

@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use uuid::Uuid;
 use warp::{http::StatusCode, reply, Filter};
 
-use trusted_cluster_operator_lib::{ConfidentialCluster, Machine, MachineSpec};
+use trusted_cluster_operator_lib::{Machine, MachineSpec, TrustedExecutionCluster};
 
 #[derive(Parser)]
 #[command(name = "register-server")]
@@ -79,20 +79,20 @@ fn generate_ignition(id: &str, public_addr: &str) -> IgnitionConfig {
 
 async fn get_public_trustee_addr(client: Client) -> anyhow::Result<String> {
     let namespace = client.default_namespace().to_string();
-    let cocls: Api<ConfidentialCluster> = Api::default_namespaced(client);
+    let clusters: Api<TrustedExecutionCluster> = Api::default_namespaced(client);
     let params = Default::default();
-    let mut list = cocls.list(&params).await?;
+    let mut list = clusters.list(&params).await?;
     if list.items.len() != 1 {
         return Err(anyhow!(
-            "More than one ConfidentialCluster found in namespace {namespace}. \
-             trusted-cluster-operator does not support more than one ConfidentialCluster. \
+            "More than one TrustedExecutionCluster found in namespace {namespace}. \
+             trusted-cluster-operator does not support more than one TrustedExecutionCluster. \
              Cancelling Ignition Clevis PIN request.",
         ));
     }
-    let cocl = list.items.pop().unwrap();
-    let name = cocl.metadata.name.as_deref().unwrap_or("<no name>");
-    cocl.spec.public_trustee_addr.context(format!(
-        "ConfidentialCluster {name} did not specify a public Trustee address. \
+    let cluster = list.items.pop().unwrap();
+    let name = cluster.metadata.name.as_deref().unwrap_or("<no name>");
+    cluster.spec.public_trustee_addr.context(format!(
+        "TrustedExecutionCluster {name} did not specify a public Trustee address. \
          Add an address and re-register the node."
     ))
 }

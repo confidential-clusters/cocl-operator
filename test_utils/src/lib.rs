@@ -264,28 +264,28 @@ impl TestContext {
 
         test_info!(&self.test_name, "CRDs and RBAC generated successfully");
 
-        let cocl_gen_path = workspace_root.join("cocl-gen");
-        if !cocl_gen_path.exists() {
+        let trusted_cluster_gen_path = workspace_root.join("trusted-cluster-gen");
+        if !trusted_cluster_gen_path.exists() {
             return Err(anyhow::anyhow!(
-                "cocl-gen not found at {}. Run 'make cocl-gen' first.",
-                cocl_gen_path.display()
+                "trusted-cluster-gen not found at {}. Run 'make trusted-cluster-gen' first.",
+                trusted_cluster_gen_path.display()
             ));
         }
 
-        let manifest_gen_output = Command::new(&cocl_gen_path)
+        let manifest_gen_output = Command::new(&trusted_cluster_gen_path)
             .args([
                 "-namespace",
                 &ns,
                 "-output-dir",
                 &self.manifests_dir,
                 "-image",
-                "localhost:5000/confidential-clusters/trusted-cluster-operator:latest",
+                "localhost:5000/trusted-execution-clusters/trusted-cluster-operator:latest",
                 "-pcrs-compute-image",
-                "localhost:5000/confidential-clusters/compute-pcrs:latest",
+                "localhost:5000/trusted-execution-clusters/compute-pcrs:latest",
                 "-trustee-image",
                 "quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711",
                 "-register-server-image",
-                "localhost:5000/confidential-clusters/registration-server:latest"
+                "localhost:5000/trusted-execution-clusters/registration-server:latest"
             ])
             .output()
             .await?;
@@ -301,7 +301,7 @@ impl TestContext {
             .args([
                 "get",
                 "crd",
-                "confidentialclusters.confidential-clusters.io",
+                "trustedexecutionclusters.trusted-execution-clusters.io",
             ])
             .output()
             .await?;
@@ -309,7 +309,7 @@ impl TestContext {
         if crd_check_output.status.success() {
             test_info!(
                 &self.test_name,
-                "ConfidentialCluster CRD already exists, skipping CRD creation"
+                "TrustedExecutionCluster CRD already exists, skipping CRD creation"
             );
         } else {
             test_info!(&self.test_name, "Applying CRDs");
@@ -335,7 +335,7 @@ impl TestContext {
         let role_path = rbac_temp_dir.join("role.yaml");
         let role_content = std::fs::read_to_string(&role_path)?.replace(
             "name: trusted-cluster-operator-role",
-            &format!("name: {}-cocl-operator-role", ns),
+            &format!("name: {}-trusted-cluster-operator-role", ns),
         );
         std::fs::write(&role_path, role_content)?;
 
@@ -418,7 +418,7 @@ resources:
             "Updating CR manifest with publicTrusteeAddr"
         );
         let trustee_addr = format!("kbs-service.{}.svc.cluster.local:8080", ns);
-        let cr_manifest_path = manifests_path.join("confidential_cluster_cr.yaml");
+        let cr_manifest_path = manifests_path.join("trusted_execution_cluster_cr.yaml");
 
         let cr_content = std::fs::read_to_string(&cr_manifest_path)?;
         let mut cr_value: serde_yaml::Value = serde_yaml::from_str(&cr_content)?;
@@ -453,7 +453,7 @@ resources:
         if !cr_output.status.success() {
             let stderr = String::from_utf8_lossy(&cr_output.stderr);
             return Err(anyhow::anyhow!(
-                "Failed to apply confidential_cluster_cr.yaml: {stderr}"
+                "Failed to apply trusted_execution_cluster_cr.yaml: {stderr}"
             ));
         }
 

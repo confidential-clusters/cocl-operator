@@ -13,7 +13,7 @@ spec:
               "config": {
                 "merge": [
                   {
-                    "source": "http://register-server.confidential-clusters.svc.cluster.local:8000/ignition-clevis-pin-trustee"
+                    "source": "http://register-server.trusted-execution-clusters.svc.cluster.local:8000/ignition-clevis-pin-trustee"
                   }
                 ]
               },

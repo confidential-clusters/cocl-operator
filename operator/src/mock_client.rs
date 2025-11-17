@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: MIT
 
 use chrono::Utc;
-use trusted_cluster_operator_lib::reference_values::{ImagePcr, ImagePcrs, PCR_CONFIG_FILE};
 use compute_pcrs_lib::Pcr;
 use http::{Method, Request, Response, StatusCode};
 use k8s_openapi::api::core::v1::ConfigMap;
@@ -13,6 +12,7 @@ use operator::RvContextData;
 use serde::Serialize;
 use std::{collections::BTreeMap, convert::Infallible};
 use tower::service_fn;
+use trusted_cluster_operator_lib::reference_values::{ImagePcr, ImagePcrs, PCR_CONFIG_FILE};
 
 macro_rules! assert_kube_api_error {
     ($err:expr, $code:expr, $reason:expr, $message:expr, $status:expr) => {{

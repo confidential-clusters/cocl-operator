@@ -5,7 +5,7 @@
 # This rule is not used by the project trusted-cluster-operator itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants read-only access to confidential-clusters.io resources.
+# Grants read-only access to trusted-execution-clusters.io resources.
 # This role is intended for users who need visibility into these resources
 # without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
 
@@ -18,7 +18,7 @@ metadata:
   name: machine-viewer-role
 rules:
 - apiGroups:
-  - confidential-clusters.io
+  - trusted-execution-clusters.io
   resources:
   - machines
   verbs:
@@ -26,7 +26,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - confidential-clusters.io
+  - trusted-execution-clusters.io
   resources:
   - machines/status
   verbs:

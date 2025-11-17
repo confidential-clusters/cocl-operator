@@ -2,5 +2,5 @@
 //
 // SPDX-License-Identifier: MIT
 
-pub mod confidentialclusters;
 pub mod machines;
+pub mod trustedexecutionclusters;

@@ -7,22 +7,22 @@ domain: io
 layout:
 - go.kubebuilder.io/v4
 projectName: kubebuilder-play1
-repo: io/confidentialcluster
+repo: io/trustedexecutioncluster
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   domain: io
-  group: confidential-clusters
-  kind: ConfidentialCluster
-  path: io/confidentialcluster/api/v1alpha1
+  group: trusted-execution-clusters
+  kind: TrustedExecutionCluster
+  path: io/trustedexecutioncluster/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
     namespaced: true
   domain: io
-  group: confidential-clusters
+  group: trusted-execution-clusters
   kind: Machine
-  path: io/confidentialcluster/api/v1alpha1
+  path: io/trustedexecutioncluster/api/v1alpha1
   version: v1alpha1
 version: "3"

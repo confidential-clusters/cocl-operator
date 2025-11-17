@@ -31,11 +31,11 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::trustee::{self, get_image_pcrs};
-use trusted_cluster_operator_lib::reference_values::*;
 use operator::{
     ControllerError, RvContextData, controller_error_policy, controller_info,
     create_or_info_if_exists,
 };
+use trusted_cluster_operator_lib::reference_values::*;
 
 const JOB_LABEL_KEY: &str = "kind";
 const PCR_COMMAND_NAME: &str = "compute-pcrs";

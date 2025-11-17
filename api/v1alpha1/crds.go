@@ -3,9 +3,9 @@
 //
 //  SPDX-License-Identifier: MIT
 
-// Package v1alpha1 contains API Schema definitions for the confidential-clusters v1alpha1 API group.
+// Package v1alpha1 contains API Schema definitions for the trusted-execution-clusters v1alpha1 API group.
 // +kubebuilder:object:generate=true
-// +groupName=confidential-clusters.io
+// +groupName=trusted-execution-clusters.io
 package v1alpha1
 
 import (
@@ -16,7 +16,7 @@ import (
 
 var (
 	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: "confidential-clusters.io", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "trusted-execution-clusters.io", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
@@ -30,13 +30,13 @@ var (
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=create
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=create;delete;list;watch
-// +kubebuilder:rbac:groups=confidential-clusters.io,resources=confidentialclusters,verbs=list;watch
-// +kubebuilder:rbac:groups=confidential-clusters.io,resources=confidentialclusters/status,verbs=patch
-// +kubebuilder:rbac:groups=confidential-clusters.io,resources=machines,verbs=create;list;delete;watch
+// +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=trustedexecutionclusters,verbs=list;watch
+// +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=trustedexecutionclusters/status,verbs=patch
+// +kubebuilder:rbac:groups=trusted-execution-clusters.io,resources=machines,verbs=create;list;delete;watch
 
-// ConfidentialClusterSpec defines the desired state of ConfidentialCluster
+// TrustedExecutionClusterSpec defines the desired state of TrustedExecutionCluster
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.publicTrusteeAddr) || has(self.publicTrusteeAddr)", message="Value is required once set"
-type ConfidentialClusterSpec struct {
+type TrustedExecutionClusterSpec struct {
 	// Image reference to Trustee all-in-one image
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeImage *string `json:"trusteeImage"`
@@ -65,8 +65,8 @@ type ConfidentialClusterSpec struct {
 	RegisterServerPort int32 `json:"registerServerPort,omitempty"`
 }
 
-// ConfidentialClusterStatus defines the observed state of ConfidentialCluster.
-type ConfidentialClusterStatus struct {
+// TrustedExecutionClusterStatus defines the observed state of TrustedExecutionCluster.
+type TrustedExecutionClusterStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	// +optional
@@ -76,30 +76,30 @@ type ConfidentialClusterStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// ConfidentialCluster is the Schema for the confidentialclusters API
-type ConfidentialCluster struct {
+// TrustedExecutionCluster is the Schema for the trustedexecutionclusters API
+type TrustedExecutionCluster struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of ConfidentialCluster
+	// spec defines the desired state of TrustedExecutionCluster
 	// +required
-	Spec ConfidentialClusterSpec `json:"spec"`
+	Spec TrustedExecutionClusterSpec `json:"spec"`
 
-	// status defines the observed state of ConfidentialCluster
+	// status defines the observed state of TrustedExecutionCluster
 	// +optional
-	Status ConfidentialClusterStatus `json:"status,omitzero"`
+	Status TrustedExecutionClusterStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
 
-// ConfidentialClusterList contains a list of ConfidentialCluster
-type ConfidentialClusterList struct {
+// TrustedExecutionClusterList contains a list of TrustedExecutionCluster
+type TrustedExecutionClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []ConfidentialCluster `json:"items"`
+	Items           []TrustedExecutionCluster `json:"items"`
 }
 
 // MachineSpec defines the desired state of Machine
