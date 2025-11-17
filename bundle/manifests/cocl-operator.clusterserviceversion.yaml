@@ -1,0 +1,97 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: cocl-operator.v0.0.1
+  namespace: placeholder
+  annotations:
+    olm.skipRange: '>=0.0.1 <0.0.1'
+spec:
+  displayName: Confidential Clusters Operator
+  description: An operator to manage confidential clusters.
+  version: 0.0.1
+  maturity: alpha
+  installModes:
+  - type: AllNamespaces
+    supported: true
+  install:
+    strategy: deployment
+    spec:
+      permissions:
+      - serviceAccountName: cocl-operator
+        rules:
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          - services
+          - endpoints
+          - persistentvolumeclaims
+          - events
+          - configmaps
+          - secrets
+          verbs:
+          - '*'
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - daemonsets
+          - replicasets
+          - statefulsets
+          verbs:
+          - '*'
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - servicemonitors
+          verbs:
+          - get
+          - create
+        - apiGroups:
+          - confidential-clusters.io
+          resources:
+          - '*'
+          verbs:
+          - '*'
+      deployments:
+      - name: cocl-operator
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              name: cocl-operator
+          template:
+            metadata:
+              labels:
+                name: cocl-operator
+            spec:
+              serviceAccountName: cocl-operator
+              containers:
+                - name: cocl-operator
+                  image: quay.io/confidential-clusters/cocl-operator:latest
+                  command:
+                  - cocl-operator
+                  imagePullPolicy: Always
+                  env:
+                    - name: WATCH_NAMESPACE
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.namespace
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                    - name: OPERATOR_NAME
+                      value: "cocl-operator"
+  customresourcedefinitions:
+    owned:
+    - name: confidentialclusters.confidential-clusters.io
+      version: v1alpha1
+      kind: ConfidentialCluster
+      displayName: Confidential Cluster
+      description: Represents a confidential cluster.
+    - name: machines.confidential-clusters.io
+      version: v1alpha1
+      kind: Machine
+      displayName: Machine
+      description: Represents a machine in a confidential cluster.
