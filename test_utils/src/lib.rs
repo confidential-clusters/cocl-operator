@@ -220,6 +220,7 @@ impl TestContext {
             self.manifests_dir
         );
 
+        let ns = self.test_namespace.clone();
         let workspace_root = std::env::current_dir()?.join("..");
         let controller_gen_path = workspace_root.join("bin/controller-gen-v0.19.0");
 
@@ -274,7 +275,7 @@ impl TestContext {
         let manifest_gen_output = Command::new(&cocl_gen_path)
             .args([
                 "-namespace",
-                &self.test_namespace,
+                &ns,
                 "-output-dir",
                 &self.manifests_dir,
                 "-image",
@@ -326,17 +327,15 @@ impl TestContext {
         test_info!(&self.test_name, "Preparing RBAC manifests");
 
         let sa_src = workspace_root.join("config/rbac/service_account.yaml");
-        let sa_content = std::fs::read_to_string(&sa_src)?.replace(
-            "namespace: system",
-            &format!("namespace: {}", self.test_namespace),
-        );
+        let sa_content = std::fs::read_to_string(&sa_src)?
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let sa_dst = rbac_temp_dir.join("service_account.yaml");
         std::fs::write(&sa_dst, sa_content)?;
 
         let role_path = rbac_temp_dir.join("role.yaml");
         let role_content = std::fs::read_to_string(&role_path)?.replace(
             "name: cocl-operator-role",
-            &format!("name: {}-cocl-operator-role", self.test_namespace),
+            &format!("name: {}-cocl-operator-role", ns),
         );
         std::fs::write(&role_path, role_content)?;
 
@@ -344,32 +343,25 @@ impl TestContext {
         let rb_content = std::fs::read_to_string(&rb_src)?
             .replace(
                 "name: manager-rolebinding",
-                &format!("name: {}-manager-rolebinding", self.test_namespace),
+                &format!("name: {}-manager-rolebinding", ns),
             )
             .replace(
                 "name: cocl-operator-role",
-                &format!("name: {}-cocl-operator-role", self.test_namespace),
+                &format!("name: {}-cocl-operator-role", ns),
             )
-            .replace(
-                "namespace: system",
-                &format!("namespace: {}", self.test_namespace),
-            );
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let rb_dst = rbac_temp_dir.join("role_binding.yaml");
         std::fs::write(&rb_dst, rb_content)?;
 
         let le_role_src = workspace_root.join("config/rbac/leader_election_role.yaml");
-        let le_role_content = std::fs::read_to_string(&le_role_src)?.replace(
-            "namespace: system",
-            &format!("namespace: {}", self.test_namespace),
-        );
+        let le_role_content = std::fs::read_to_string(&le_role_src)?
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let le_role_dst = rbac_temp_dir.join("leader_election_role.yaml");
         std::fs::write(&le_role_dst, le_role_content)?;
 
         let le_rb_src = workspace_root.join("config/rbac/leader_election_role_binding.yaml");
-        let le_rb_content = std::fs::read_to_string(&le_rb_src)?.replace(
-            "namespace: system",
-            &format!("namespace: {}", self.test_namespace),
-        );
+        let le_rb_content = std::fs::read_to_string(&le_rb_src)?
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let le_rb_dst = rbac_temp_dir.join("leader_election_role_binding.yaml");
         std::fs::write(&le_rb_dst, le_rb_content)?;
 
@@ -387,7 +379,7 @@ resources:
   - leader_election_role.yaml
   - leader_election_role_binding.yaml
 "#,
-            self.test_namespace
+            ns
         );
 
         let temp_kustomization_path = rbac_temp_dir.join("kustomization.yaml");
@@ -425,7 +417,7 @@ resources:
             &self.test_name,
             "Updating CR manifest with publicTrusteeAddr"
         );
-        let trustee_addr = format!("kbs-service.{}.svc.cluster.local:8080", self.test_namespace);
+        let trustee_addr = format!("kbs-service.{}.svc.cluster.local:8080", ns);
         let cr_manifest_path = manifests_path.join("confidential_cluster_cr.yaml");
 
         let cr_content = std::fs::read_to_string(&cr_manifest_path)?;
@@ -465,8 +457,7 @@ resources:
             ));
         }
 
-        let deployments_api: Api<Deployment> =
-            Api::namespaced(self.client.clone(), &self.test_namespace);
+        let deployments_api: Api<Deployment> = Api::namespaced(self.client.clone(), &ns);
 
         self.wait_for_deployment_ready(&deployments_api, "cocl-operator", 120)
             .await?;
@@ -479,15 +470,14 @@ resources:
             &self.test_name,
             "Waiting for image-pcrs ConfigMap to be created"
         );
-        let configmap_api: Api<ConfigMap> =
-            Api::namespaced(self.client.clone(), &self.test_namespace);
+        let configmap_api: Api<ConfigMap> = Api::namespaced(self.client.clone(), &ns);
 
         let poller = Poller::new()
             .with_timeout(Duration::from_secs(60))
             .with_interval(Duration::from_secs(5))
             .with_error_message(format!(
                 "image-pcrs ConfigMap in the namespace {} not found",
-                self.test_namespace
+                ns
             ));
 
         let test_name_owned = self.test_name.clone();
