@@ -5,7 +5,7 @@
 
 ARG build_type
 # Dependency build stage
-FROM ghcr.io/confidential-clusters/buildroot AS builder
+FROM ghcr.io/trusted-execution-clusters/buildroot AS builder
 ARG build_type
 WORKDIR /build
 

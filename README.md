@@ -13,7 +13,7 @@ within the cluster.
 -   `/api`: Defines the `TrustedExecutionCluster` Custom Resource Definition (CRD) and associated CRDs and RBAC definitions in Go. Also contains a program to generate a `TrustedExecutionCluster` CR and associated deployment.
 -   `/operator`: Contains the source code for the Kubernetes operator itself.
 -   `/register-server`: A server that provides Clevis PINs for key retrieval with random UUIDs.
--   `/compute-pcrs`: A program to compute PCR reference values using the [compute-pcrs library](https://github.com/confidential-clusters/compute-pcrs) and insert them into a ConfigMap, run as a Job.
+-   `/compute-pcrs`: A program to compute PCR reference values using the [compute-pcrs library](https://github.com/trusted-execution-clusters/compute-pcrs) and insert them into a ConfigMap, run as a Job.
 -   `/lib`: Shared Rust definitions, including translated CRDs
 -   `/scripts`: Helper scripts for managing a local `kind` development cluster.
 -   `/config`: The default output directory for generated manifests. This directory is not checked into source control.
@@ -54,7 +54,7 @@ The KBS port will be forwarded to `8080` on your machine; the node register serv
 ### Test
 
 Run a VM as described in the
-[investigations](https://github.com/confidential-clusters/investigations?tab=readme-ov-file#example-with-the-trusted-execution-clusters-operator-and-a-local-vm)
+[investigations](https://github.com/trusted-execution-clusters/investigations?tab=readme-ov-file#example-with-the-trusted-execution-clusters-operator-and-a-local-vm)
 repository.
 
 ## Licenses

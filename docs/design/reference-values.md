@@ -3,7 +3,7 @@
 ## Overview
 
 Attestation in Trusted Execution Clusters is based on PCR values reported by a TPM.
-These values can be predicted when the exact OS the node is expected to be used is known, by means of the [compute-pcrs](https://github.com/confidential-clusters/compute-pcrs) library.
+These values can be predicted when the exact OS the node is expected to be used is known, by means of the [compute-pcrs](https://github.com/trusted-execution-clusters/compute-pcrs) library.
 In the design of Trusted Execution Clusters, the OS is represented by a bootable container image with a [UKI](https://uapi-group.org/specifications/specs/unified_kernel_image).
 
 This document describes how a bootable image tag becomes approved and revoked, and how the set of approved image tags is turned into reference values to be used by Trustee's [reference value provider service](https://github.com/confidential-containers/trustee/tree/main/rvps).
