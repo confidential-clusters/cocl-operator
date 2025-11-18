@@ -7,4 +7,4 @@
 
 source scripts/common.sh
 kind delete cluster
-podman rm -f kind-registry
+${RUNTIME} rm -f kind-registry
