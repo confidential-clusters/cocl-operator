@@ -11,6 +11,7 @@ path = [
   "operator/src/tpm.rego",
   "docs/pics/*",
   "docs/design/*",
+  "docs/dev/*",
   "tests/README.md",
   "examples/vm-coreos-ign.yaml",
   "scripts/install-kubevirt.sh"

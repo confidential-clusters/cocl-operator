@@ -416,67 +416,66 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rvs_success() {
-        let clos = async |req: Request<_>| match req {
-            r if r.uri().path().contains(PCR_CONFIG_MAP) => {
+        let clos = async |req: Request<_>, ctr| match (ctr, req.method()) {
+            (0, &Method::GET) => {
+                assert!(req.uri().path().contains(PCR_CONFIG_MAP));
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
-            r if r.uri().path().contains(TRUSTEE_DATA_MAP) => {
-                Ok(serde_json::to_string(&ConfigMap {
-                    data: Some(BTreeMap::from([(
-                        REFERENCE_VALUES_FILE.to_string(),
-                        "[]".to_string(),
-                    )])),
-                    ..Default::default()
-                })
-                .unwrap())
+            (1, &Method::GET) | (2, &Method::PUT) => {
+                assert!(req.uri().path().contains(TRUSTEE_DATA_MAP));
+                Ok(serde_json::to_string(&dummy_trustee_map()).unwrap())
             }
-            _ => panic!("unexpected API interaction: {req:?}"),
+            _ => panic!("unexpected API interaction: {req:?}, counter {ctr}"),
         };
-        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
-        assert!(update_reference_values(ctx).await.is_ok());
+        count_check!(3, clos, |client| {
+            let ctx = generate_rv_ctx(client);
+            assert!(update_reference_values(ctx).await.is_ok());
+        });
     }
 
     #[tokio::test]
     async fn test_update_rvs_no_pcr_map() {
-        let clos = async |req: Request<_>| match req {
-            r if r.uri().path().contains(PCR_CONFIG_MAP) && r.method() == Method::GET => {
-                Err(StatusCode::NOT_FOUND)
-            }
+        let clos = async |req: Request<_>, _| match (req.uri().path(), req.method()) {
+            (p, &Method::GET) if p.contains(PCR_CONFIG_MAP) => Err(StatusCode::NOT_FOUND),
             _ => panic!("unexpected API interaction: {req:?}"),
         };
-        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
-        assert!(update_reference_values(ctx).await.is_err())
+        count_check!(1, clos, |client| {
+            let ctx = generate_rv_ctx(client);
+            assert!(update_reference_values(ctx).await.is_err());
+        });
     }
 
     #[tokio::test]
     async fn test_update_rvs_no_trustee_map() {
-        let clos = async |req: Request<_>| match req {
-            r if r.uri().path().contains(PCR_CONFIG_MAP) => {
+        let clos = async |req: Request<_>, ctr| match (ctr, req.uri().path()) {
+            (0, p) if p.contains(PCR_CONFIG_MAP) => {
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
-            r if r.uri().path().contains(TRUSTEE_DATA_MAP) && r.method() == Method::GET => {
-                Err(StatusCode::NOT_FOUND)
-            }
-            _ => panic!("unexpected API interaction: {req:?}"),
+            (1, p) if p.contains(TRUSTEE_DATA_MAP) => Err(StatusCode::NOT_FOUND),
+            _ => panic!("unexpected API interaction: {req:?}, counter {ctr}"),
         };
-        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
-        assert!(update_reference_values(ctx).await.is_err())
+        count_check!(2, clos, |client| {
+            let ctx = generate_rv_ctx(client);
+            assert!(update_reference_values(ctx).await.is_err())
+        });
     }
 
     #[tokio::test]
     async fn test_update_rvs_no_trustee_data() {
-        let clos = async |req: Request<_>| match req {
-            r if r.uri().path().contains(PCR_CONFIG_MAP) => {
+        let clos = async |req: Request<_>, ctr| match (ctr, req.uri().path()) {
+            (0, p) if p.contains(PCR_CONFIG_MAP) => {
                 Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
             }
-            r if r.uri().path().contains(TRUSTEE_DATA_MAP) => {
+            (1, p) if p.contains(TRUSTEE_DATA_MAP) => {
                 Ok(serde_json::to_string(&ConfigMap::default()).unwrap())
             }
-            _ => panic!("unexpected API interaction: {req:?}"),
+            _ => panic!("unexpected API interaction: {req:?}, counter {ctr}"),
         };
-        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
-        let err = update_reference_values(ctx).await.err().unwrap();
-        assert!(err.to_string().contains("but had no data"));
+        count_check!(2, clos, |client| {
+            let ctx = generate_rv_ctx(client);
+            let err = update_reference_values(ctx).await.err().unwrap();
+            assert!(err.to_string().contains("but had no data"));
+        });
     }
 
     #[test]
@@ -504,60 +503,65 @@ mod tests {
 
     #[tokio::test]
     async fn test_mount_secret_success() {
-        let clos = async |_| Ok(serde_json::to_string(&dummy_deployment()).unwrap());
-        let client = MockClient::new(clos, "test".to_string()).into_client();
-        assert!(mount_secret(client, "id").await.is_ok());
+        let clos = async |req: Request<_>, ctr| match (ctr, req.method()) {
+            (0, &Method::GET) | (1, &Method::PUT) => {
+                Ok(serde_json::to_string(&dummy_deployment()).unwrap())
+            }
+            _ => panic!("unexpected API interaction: {req:?}, counter {ctr}"),
+        };
+        count_check!(2, clos, |client| {
+            assert!(mount_secret(client, "id").await.is_ok());
+        });
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_depl() {
-        let clos = async |req: Request<_>| match req {
-            r if r.uri().path().contains(DEPLOYMENT_NAME) && r.method() == Method::GET => {
-                Err(StatusCode::NOT_FOUND)
-            }
-            _ => panic!("unexpected API interaction: {req:?}"),
-        };
-        let client = MockClient::new(clos, "test".to_string()).into_client();
-        assert!(mount_secret(client, "id").await.is_err());
+        let clos = async |_, _| Err(StatusCode::NOT_FOUND);
+        count_check!(1, clos, |client| {
+            assert!(mount_secret(client, "id").await.is_err());
+        });
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_spec() {
-        let clos = async |_| {
+        let clos = async |_, _| {
             let mut depl = dummy_deployment();
             depl.spec = None;
             Ok(serde_json::to_string(&depl).unwrap())
         };
-        let client = MockClient::new(clos, "test".to_string()).into_client();
-        let err = mount_secret(client, "id").await.err().unwrap();
-        assert!(err.to_string().contains("but had no spec"));
+        count_check!(1, clos, |client| {
+            let err = mount_secret(client, "id").await.err().unwrap();
+            assert!(err.to_string().contains("but had no spec"));
+        });
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_pod_spec() {
-        let clos = async |_| {
+        let clos = async |_, _| {
             let mut depl = dummy_deployment();
             let spec = depl.spec.as_mut().unwrap();
             spec.template.spec = None;
             Ok(serde_json::to_string(&depl).unwrap())
         };
-        let client = MockClient::new(clos, "test".to_string()).into_client();
-        let err = mount_secret(client, "id").await.err().unwrap();
-        assert!(err.to_string().contains("but had no pod spec"));
+        count_check!(1, clos, |client| {
+            let err = mount_secret(client, "id").await.err().unwrap();
+            assert!(err.to_string().contains("but had no pod spec"));
+        });
     }
 
     #[tokio::test]
     async fn test_mount_secret_no_containers() {
-        let clos = async |_| {
+        let clos = async |_, _| {
             let mut depl = dummy_deployment();
             let spec = depl.spec.as_mut().unwrap();
             let pod_spec = spec.template.spec.as_mut().unwrap();
             pod_spec.containers = vec![];
             Ok(serde_json::to_string(&depl).unwrap())
         };
-        let client = MockClient::new(clos, "test".to_string()).into_client();
-        let err = mount_secret(client, "id").await.err().unwrap();
-        assert!(err.to_string().contains("but had no containers"));
+        count_check!(1, clos, |client| {
+            let err = mount_secret(client, "id").await.err().unwrap();
+            assert!(err.to_string().contains("but had no containers"));
+        });
     }
 
     #[tokio::test]
