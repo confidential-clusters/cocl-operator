@@ -60,7 +60,7 @@ trusted-cluster-gen: api/trusted-cluster-gen.go
 	go build -o $@ $<
 
 DEPLOY_PATH = config/deploy
-manifests: trusted-cluster-gen
+manifests: trusted-cluster-gen generate
 	./trusted-cluster-gen -output-dir $(DEPLOY_PATH) \
 		-namespace $(NAMESPACE) \
 		-image $(OPERATOR_IMAGE) \
@@ -69,27 +69,36 @@ manifests: trusted-cluster-gen
 		-register-server-image $(REG_SERVER_IMAGE)
 
 cluster-up:
-	scripts/create-cluster-kind.sh
+	RUNTIME=$(RUNTIME) scripts/create-cluster-kind.sh
 
 cluster-cleanup:
-	$(KUBECTL) delete -f manifests/trusted_execution_cluster_cr.yaml
-	$(KUBECTL) delete -f manifests/trusted_execution_cluster_crd.yaml
-	$(KUBECTL) delete -f manifests/operator.yaml
+	$(KUBECTL) delete -f $(DEPLOY_PATH)/trusted_execution_cluster_cr.yaml
+	$(KUBECTL) delete -f $(CRD_YAML_PATH)/trusted-execution-clusters.io_trustedexecutionclusters.yaml
+	$(KUBECTL) delete -f $(DEPLOY_PATH)/operator.yaml
 
 
 cluster-down:
-	scripts/delete-cluster-kind.sh
+	RUNTIME=$(RUNTIME) scripts/delete-cluster-kind.sh
+
+CONTAINER_CLI ?= podman
+RUNTIME ?= podman
 
 image:
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f Containerfile .
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
-	podman build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
+	$(CONTAINER_CLI) build --build-arg build_type=$(BUILD_TYPE) -t $(OPERATOR_IMAGE) -f Containerfile .
+	$(CONTAINER_CLI) build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
+	$(CONTAINER_CLI) build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
+
+ifeq ($(CONTAINER_CLI),podman)
+TLS_VERIFY_FLAG = --tls-verify=false
+else
+TLS_VERIFY_FLAG =
+endif
 
 # TODO: remove the tls-verify, right now we are pushing only on the local registry
 push: image
-	podman push $(OPERATOR_IMAGE) --tls-verify=false
-	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
-	podman push $(REG_SERVER_IMAGE) --tls-verify=false
+	$(CONTAINER_CLI) push $(OPERATOR_IMAGE) $(TLS_VERIFY_FLAG)
+	$(CONTAINER_CLI) push $(COMPUTE_PCRS_IMAGE) $(TLS_VERIFY_FLAG)
+	$(CONTAINER_CLI) push $(REG_SERVER_IMAGE) $(TLS_VERIFY_FLAG)
 
 install: $(YQ)
 ifndef TRUSTEE_ADDR
