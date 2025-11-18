@@ -1,0 +1,49 @@
+// SPDX-FileCopyrightText: Yalan Zhang <yalzhang@redhat.com>
+//
+// SPDX-License-Identifier: CC0-1.0
+
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:base"],
+
+  "schedule": ["0 0 * * 0"],
+
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+
+  "dependencyDashboard": false,
+
+  "enabledManagers": ["dockerfile", "gomod", "cargo"],
+  "ignorePaths": [
+    "docs/**",
+    "examples/**",
+    "scripts/**"
+  ],
+
+  "dockerfile": {
+    "fileMatch": ["(^|/)Containerfile$"]
+  },
+
+  "labels": ["konflux-pr"],
+
+  "packageRules": [
+    {
+      "description": "Auto-merge Containerfile digest updates",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true,
+      "autoApprove": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Group minor/patch/pin updates for Go and Rust",
+      "matchManagers": ["gomod", "cargo"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "weekly-bot-updates",
+      "groupSlug": "weekly-updates",
+      "automerge": false
+    }
+  ],
+
+  "semanticCommits": "enabled"
+}
