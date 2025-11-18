@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: CC0-1.0
 
 ARG build_type
-FROM ghcr.io/confidential-clusters/buildroot AS builder
+FROM ghcr.io/trusted-execution-clusters/buildroot AS builder
 ARG build_type
 WORKDIR /build
 
@@ -22,7 +22,7 @@ COPY compute-pcrs/src/lib.rs compute-pcrs/src/
 # Set only required crates as members to minimize rebuilds upon changes.
 # Build dependencies in lower layer to make use of caching.
 RUN sed -i 's/members =.*/members = ["compute-pcrs", "lib"]/' Cargo.toml && \
-    git clone --depth 1 https://github.com/confidential-clusters/reference-values && \
+    git clone --depth 1 https://github.com/trusted-execution-clusters/reference-values && \
     cargo build -p compute-pcrs --lib $(if [ "$build_type" = release ]; then echo --release; fi)
 
 COPY compute-pcrs/src compute-pcrs/src

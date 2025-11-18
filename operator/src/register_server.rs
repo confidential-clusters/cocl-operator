@@ -26,8 +26,8 @@ use log::info;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::trustee;
-use cocl_operator_lib::Machine;
 use operator::{ControllerError, controller_error_policy, create_or_info_if_exists};
+use trusted_cluster_operator_lib::Machine;
 
 const INTERNAL_REGISTER_SERVER_PORT: i32 = 8000;
 
@@ -58,7 +58,7 @@ pub async fn create_register_server_deployment(
                     ..Default::default()
                 }),
                 spec: Some(PodSpec {
-                    service_account_name: Some("cocl-operator".to_string()),
+                    service_account_name: Some("trusted-cluster-operator".to_string()),
                     containers: vec![Container {
                         name: name.to_string(),
                         image: Some(image.to_string()),

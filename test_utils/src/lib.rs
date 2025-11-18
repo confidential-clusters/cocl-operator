@@ -220,6 +220,7 @@ impl TestContext {
             self.manifests_dir
         );
 
+        let ns = self.test_namespace.clone();
         let workspace_root = std::env::current_dir()?.join("..");
         let controller_gen_path = workspace_root.join("bin/controller-gen-v0.19.0");
 
@@ -243,7 +244,7 @@ impl TestContext {
 
         let crd_gen_output = Command::new(&controller_gen_path)
             .args([
-                "rbac:roleName=cocl-operator-role",
+                "rbac:roleName=trusted-cluster-operator-role",
                 "crd",
                 "webhook",
                 "paths=./...",
@@ -263,28 +264,28 @@ impl TestContext {
 
         test_info!(&self.test_name, "CRDs and RBAC generated successfully");
 
-        let cocl_gen_path = workspace_root.join("cocl-gen");
-        if !cocl_gen_path.exists() {
+        let trusted_cluster_gen_path = workspace_root.join("trusted-cluster-gen");
+        if !trusted_cluster_gen_path.exists() {
             return Err(anyhow::anyhow!(
-                "cocl-gen not found at {}. Run 'make cocl-gen' first.",
-                cocl_gen_path.display()
+                "trusted-cluster-gen not found at {}. Run 'make trusted-cluster-gen' first.",
+                trusted_cluster_gen_path.display()
             ));
         }
 
-        let manifest_gen_output = Command::new(&cocl_gen_path)
+        let manifest_gen_output = Command::new(&trusted_cluster_gen_path)
             .args([
                 "-namespace",
-                &self.test_namespace,
+                &ns,
                 "-output-dir",
                 &self.manifests_dir,
                 "-image",
-                "localhost:5000/confidential-clusters/cocl-operator:latest",
+                "localhost:5000/trusted-execution-clusters/trusted-cluster-operator:latest",
                 "-pcrs-compute-image",
-                "localhost:5000/confidential-clusters/compute-pcrs:latest",
+                "localhost:5000/trusted-execution-clusters/compute-pcrs:latest",
                 "-trustee-image",
-                "quay.io/confidential-clusters/key-broker-service:tpm-verifier-built-in-as-20250711",
+                "quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711",
                 "-register-server-image",
-                "localhost:5000/confidential-clusters/registration-server:latest"
+                "localhost:5000/trusted-execution-clusters/registration-server:latest"
             ])
             .output()
             .await?;
@@ -300,7 +301,7 @@ impl TestContext {
             .args([
                 "get",
                 "crd",
-                "confidentialclusters.confidential-clusters.io",
+                "trustedexecutionclusters.trusted-execution-clusters.io",
             ])
             .output()
             .await?;
@@ -308,7 +309,7 @@ impl TestContext {
         if crd_check_output.status.success() {
             test_info!(
                 &self.test_name,
-                "ConfidentialCluster CRD already exists, skipping CRD creation"
+                "TrustedExecutionCluster CRD already exists, skipping CRD creation"
             );
         } else {
             test_info!(&self.test_name, "Applying CRDs");
@@ -326,17 +327,15 @@ impl TestContext {
         test_info!(&self.test_name, "Preparing RBAC manifests");
 
         let sa_src = workspace_root.join("config/rbac/service_account.yaml");
-        let sa_content = std::fs::read_to_string(&sa_src)?.replace(
-            "namespace: system",
-            &format!("namespace: {}", self.test_namespace),
-        );
+        let sa_content = std::fs::read_to_string(&sa_src)?
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let sa_dst = rbac_temp_dir.join("service_account.yaml");
         std::fs::write(&sa_dst, sa_content)?;
 
         let role_path = rbac_temp_dir.join("role.yaml");
         let role_content = std::fs::read_to_string(&role_path)?.replace(
-            "name: cocl-operator-role",
-            &format!("name: {}-cocl-operator-role", self.test_namespace),
+            "name: trusted-cluster-operator-role",
+            &format!("name: {}-trusted-cluster-operator-role", ns),
         );
         std::fs::write(&role_path, role_content)?;
 
@@ -344,32 +343,25 @@ impl TestContext {
         let rb_content = std::fs::read_to_string(&rb_src)?
             .replace(
                 "name: manager-rolebinding",
-                &format!("name: {}-manager-rolebinding", self.test_namespace),
+                &format!("name: {}-manager-rolebinding", ns),
             )
             .replace(
-                "name: cocl-operator-role",
-                &format!("name: {}-cocl-operator-role", self.test_namespace),
+                "name: trusted-cluster-operator-role",
+                &format!("name: {}-trusted-cluster-operator-role", ns),
             )
-            .replace(
-                "namespace: system",
-                &format!("namespace: {}", self.test_namespace),
-            );
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let rb_dst = rbac_temp_dir.join("role_binding.yaml");
         std::fs::write(&rb_dst, rb_content)?;
 
         let le_role_src = workspace_root.join("config/rbac/leader_election_role.yaml");
-        let le_role_content = std::fs::read_to_string(&le_role_src)?.replace(
-            "namespace: system",
-            &format!("namespace: {}", self.test_namespace),
-        );
+        let le_role_content = std::fs::read_to_string(&le_role_src)?
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let le_role_dst = rbac_temp_dir.join("leader_election_role.yaml");
         std::fs::write(&le_role_dst, le_role_content)?;
 
         let le_rb_src = workspace_root.join("config/rbac/leader_election_role_binding.yaml");
-        let le_rb_content = std::fs::read_to_string(&le_rb_src)?.replace(
-            "namespace: system",
-            &format!("namespace: {}", self.test_namespace),
-        );
+        let le_rb_content = std::fs::read_to_string(&le_rb_src)?
+            .replace("namespace: system", &format!("namespace: {}", ns));
         let le_rb_dst = rbac_temp_dir.join("leader_election_role_binding.yaml");
         std::fs::write(&le_rb_dst, le_rb_content)?;
 
@@ -387,7 +379,7 @@ resources:
   - leader_election_role.yaml
   - leader_election_role_binding.yaml
 "#,
-            self.test_namespace
+            ns
         );
 
         let temp_kustomization_path = rbac_temp_dir.join("kustomization.yaml");
@@ -425,8 +417,8 @@ resources:
             &self.test_name,
             "Updating CR manifest with publicTrusteeAddr"
         );
-        let trustee_addr = format!("kbs-service.{}.svc.cluster.local:8080", self.test_namespace);
-        let cr_manifest_path = manifests_path.join("confidential_cluster_cr.yaml");
+        let trustee_addr = format!("kbs-service.{}.svc.cluster.local:8080", ns);
+        let cr_manifest_path = manifests_path.join("trusted_execution_cluster_cr.yaml");
 
         let cr_content = std::fs::read_to_string(&cr_manifest_path)?;
         let mut cr_value: serde_yaml::Value = serde_yaml::from_str(&cr_content)?;
@@ -461,14 +453,13 @@ resources:
         if !cr_output.status.success() {
             let stderr = String::from_utf8_lossy(&cr_output.stderr);
             return Err(anyhow::anyhow!(
-                "Failed to apply confidential_cluster_cr.yaml: {stderr}"
+                "Failed to apply trusted_execution_cluster_cr.yaml: {stderr}"
             ));
         }
 
-        let deployments_api: Api<Deployment> =
-            Api::namespaced(self.client.clone(), &self.test_namespace);
+        let deployments_api: Api<Deployment> = Api::namespaced(self.client.clone(), &ns);
 
-        self.wait_for_deployment_ready(&deployments_api, "cocl-operator", 120)
+        self.wait_for_deployment_ready(&deployments_api, "trusted-cluster-operator", 120)
             .await?;
         self.wait_for_deployment_ready(&deployments_api, "register-server", 300)
             .await?;
@@ -479,15 +470,14 @@ resources:
             &self.test_name,
             "Waiting for image-pcrs ConfigMap to be created"
         );
-        let configmap_api: Api<ConfigMap> =
-            Api::namespaced(self.client.clone(), &self.test_namespace);
+        let configmap_api: Api<ConfigMap> = Api::namespaced(self.client.clone(), &ns);
 
         let poller = Poller::new()
             .with_timeout(Duration::from_secs(60))
             .with_interval(Duration::from_secs(5))
             .with_error_message(format!(
                 "image-pcrs ConfigMap in the namespace {} not found",
-                self.test_namespace
+                ns
             ));
 
         let test_name_owned = self.test_name.clone();

@@ -11,7 +11,7 @@ use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Api, Client};
 use std::collections::BTreeMap;
 
-use cocl_operator_lib::reference_values::*;
+use trusted_cluster_operator_lib::reference_values::*;
 
 #[derive(Parser)]
 #[command(version, about)]

@@ -2,26 +2,26 @@
 //
 // SPDX-License-Identifier: MIT
 
-use cocl_operator_lib::ConfidentialCluster;
-use cocl_operator_lib::reference_values::ImagePcrs;
-use cocl_operator_test_utils::*;
 use compute_pcrs_lib::{Part, Pcr};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Api, api::DeleteParams};
 use std::time::Duration;
+use trusted_cluster_operator_lib::TrustedExecutionCluster;
+use trusted_cluster_operator_lib::reference_values::ImagePcrs;
+use trusted_cluster_operator_test_utils::*;
 
 named_test!(
-    async fn test_confidential_cluster_uninstall() -> anyhow::Result<()> {
+    async fn test_trusted_execution_cluster_uninstall() -> anyhow::Result<()> {
         let test_ctx = setup!().await?;
         let client = test_ctx.client();
         let namespace = test_ctx.namespace();
-        let name = "confidential-cluster";
+        let name = "trusted-execution-cluster";
 
         let configmap_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
 
-        // Delete the cocl cr
-        let api: Api<ConfidentialCluster> = Api::namespaced(client.clone(), namespace);
+        // Delete the cluster cr
+        let api: Api<TrustedExecutionCluster> = Api::namespaced(client.clone(), namespace);
         let dp = DeleteParams::default();
         api.delete(name, &dp).await?;
 

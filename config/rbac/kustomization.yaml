@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-namespace: confidential-clusters
+namespace: trusted-execution-clusters
 resources:
   # All RBAC will be applied under this service account in
   # the deployment namespace. You may comment out this resource
@@ -25,11 +25,11 @@ resources:
   - metrics_reader_role.yaml
   # For each CRD, "Admin", "Editor" and "Viewer" roles are scaffolded by
   # default, aiding admins in cluster management. Those roles are
-  # not used by the cocl-operator itself. You can comment the following lines
+  # not used by the trusted-cluster-operator itself. You can comment the following lines
   # if you do not want those helpers be installed with your Project.
-  - confidentialcluster_admin_role.yaml
-  - confidentialcluster_editor_role.yaml
-  - confidentialcluster_viewer_role.yaml
+  - trustedexecutioncluster_admin_role.yaml
+  - trustedexecutioncluster_editor_role.yaml
+  - trustedexecutioncluster_viewer_role.yaml
   - machine_admin_role.yaml
   - machine_editor_role.yaml
   - machine_viewer_role.yaml

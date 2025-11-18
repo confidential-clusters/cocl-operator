@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: MIT
 
-use cocl_operator_test_utils::*;
+use trusted_cluster_operator_test_utils::*;
 
 #[cfg(feature = "virtualization")]
-use cocl_operator_test_utils::virt;
+use trusted_cluster_operator_test_utils::virt;
 
 virt_test! {
 async fn test_attestation() -> anyhow::Result<()> {
@@ -21,7 +21,7 @@ async fn test_attestation() -> anyhow::Result<()> {
         "http://register-server.{}.svc.cluster.local:8000/ignition-clevis-pin-trustee",
         namespace
     );
-    let image = "quay.io/confidential-clusters/fedora-coreos-kubevirt:latest";
+    let image = "quay.io/trusted-execution-clusters/fedora-coreos-kubevirt:latest";
 
     test_ctx.info(format!("Creating VM: {}", vm_name));
     virt::create_kubevirt_vm(
@@ -76,7 +76,7 @@ async fn test_parallel_vm_attestation() -> anyhow::Result<()> {
         "http://register-server.{}.svc.cluster.local:8000/ignition-clevis-pin-trustee",
         namespace
     );
-    let image = "quay.io/confidential-clusters/fedora-coreos-kubevirt:latest";
+    let image = "quay.io/trusted-execution-clusters/fedora-coreos-kubevirt:latest";
 
     // Launch both VMs in parallel
     let vm1_name = "test-coreos-vm1";
@@ -175,7 +175,7 @@ async fn test_vm_reboot_attestation() -> anyhow::Result<()> {
         "http://register-server.{}.svc.cluster.local:8000/ignition-clevis-pin-trustee",
         namespace
     );
-    let image = "quay.io/confidential-clusters/fedora-coreos-kubevirt:latest";
+    let image = "quay.io/trusted-execution-clusters/fedora-coreos-kubevirt:latest";
 
     test_ctx.info(format!("Creating VM: {}", vm_name));
     virt::create_kubevirt_vm(

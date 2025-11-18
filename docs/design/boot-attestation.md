@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the booting flow for confidential clusters with the attestation flow.
+This document describes the booting flow for trusted execution clusters with the attestation flow.
 
 During firstboot the root disk will be encrypted by the key released after attestation, while on second boot the root disk will be decrypted upon a successful attestation.
 
@@ -33,7 +33,7 @@ This pin:
 
 ## Operator Coordination
 
-The **COCL (Confidential Cluster) Operator** serves as the central coordinator for the attestation and registration process. It orchestrates the entire workflow from initial cluster deployment through node attestation and secret management.
+The **Trusted Execution Cluster Operator** serves as the central coordinator for the attestation and registration process. It orchestrates the entire workflow from initial cluster deployment through node attestation and secret management.
 
 ### Operator Responsibilities
 
@@ -108,7 +108,7 @@ When the Ignition merge directive contacts the registration service to fetch the
 
 ### Automatic Provisioning Upon Machine Detection
 
-The Confidential Cluster operators watches for Machine objects and when it detects a new Machine object:
+The Trusted Execution Cluster operators watches for Machine objects and when it detects a new Machine object:
 
 1. **UUID Extraction**: Extracts the UUID from the Machine object
 1. **LUKS Key Generation**: Generates a LUKS encryption key for the node

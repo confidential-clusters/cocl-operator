@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: MIT
 
 use chrono::Utc;
-use cocl_operator_lib::conditions::*;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, Time};
+use trusted_cluster_operator_lib::conditions::*;
 
 pub fn condition_status(status: bool) -> String {
     match status {
@@ -37,7 +37,7 @@ pub fn installed_condition(reason: &str, generation: Option<i64>) -> Condition {
         reason: reason.to_string(),
         message: match reason {
             NOT_INSTALLED_REASON_NON_UNIQUE => {
-                "Another ConfidentialCluster definition was detected. \
+                "Another TrustedExecutionCluster definition was detected. \
                  Only one at a time is supported."
             }
             NOT_INSTALLED_REASON_INSTALLING => "Installation is in progress",

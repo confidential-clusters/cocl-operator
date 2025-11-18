@@ -8,7 +8,6 @@ use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
 use clevis_pin_trustee_lib::Key as ClevisKey;
-use cocl_operator_lib::reference_values::*;
 use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{
@@ -27,6 +26,7 @@ use operator::{RvContextData, create_or_info_if_exists};
 use serde::{Serialize, Serializer};
 use serde_json::Value::String as JsonString;
 use std::collections::BTreeMap;
+use trusted_cluster_operator_lib::reference_values::*;
 
 const TRUSTEE_DATA_DIR: &str = "/opt/trustee";
 const TRUSTEE_SECRETS_PATH: &str = "/opt/trustee/kbs-repository/default";

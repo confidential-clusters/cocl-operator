@@ -6,7 +6,7 @@
 package main
 
 import (
-	"io/confidentialcluster/api/v1alpha1"
+	"io/trustedexecutioncluster/api/v1alpha1"
 
 	"flag"
 	"fmt"
@@ -32,19 +32,19 @@ type Args struct {
 func main() {
 	args := Args{}
 	flag.StringVar(&args.outputDir, "output-dir", "config/deploy", "Output directory to save rendered YAML")
-	flag.StringVar(&args.image, "image", "quay.io/confidential-clusters/cocl-operator:latest", "Container image to use in the deployment")
-	flag.StringVar(&args.namespace, "namespace", "confidential-clusters", "Namespace where to install the operator")
+	flag.StringVar(&args.image, "image", "quay.io/trusted-execution-clusters/trusted-cluster-operator:latest", "Container image to use in the deployment")
+	flag.StringVar(&args.namespace, "namespace", "trusted-execution-clusters", "Namespace where to install the operator")
 	flag.StringVar(&args.trusteeImage, "trustee-image", "operators", "Container image with all-in-one Trustee")
-	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/confidential-clusters/compute-pcrs:latest", "Container image with the cocl compute-pcrs binary")
-	flag.StringVar(&args.registerServerImage, "register-server-image", "quay.io/confidential-clusters/register-server:latest", "Register server image to use in the deployment")
+	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/trusted-execution-clusters/compute-pcrs:latest", "Container image with the Trusted Execution Clusters compute-pcrs binary")
+	flag.StringVar(&args.registerServerImage, "register-server-image", "quay.io/trusted-execution-clusters/register-server:latest", "Register server image to use in the deployment")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags)
 	if err := generateOperator(&args); err != nil {
 		log.Fatalf("Failed to generate operator: %v", err)
 	}
-	if err := generateConfidentialClusterCR(&args); err != nil {
-		log.Fatalf("Failed to generate ConfidentialCluster CR: %v", err)
+	if err := generateTrustedExecutionClusterCR(&args); err != nil {
+		log.Fatalf("Failed to generate TrustedExecutionCluster CR: %v", err)
 	}
 }
 
@@ -63,8 +63,8 @@ func generateOperator(args *Args) error {
 		return fmt.Errorf("failed to marshal namespace: %w", err)
 	}
 
-	name := "cocl-operator"
-	appLabel := "cocl-operator"
+	name := "trusted-cluster-operator"
+	appLabel := "trusted-cluster-operator"
 	labels := map[string]string{"app": appLabel}
 	replicas := int32(1)
 
@@ -120,17 +120,17 @@ func generateOperator(args *Args) error {
 	return nil
 }
 
-func generateConfidentialClusterCR(args *Args) error {
-	sample := &v1alpha1.ConfidentialCluster{
+func generateTrustedExecutionClusterCR(args *Args) error {
+	sample := &v1alpha1.TrustedExecutionCluster{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: v1alpha1.GroupVersion.String(),
-			Kind:       "ConfidentialCluster",
+			Kind:       "TrustedExecutionCluster",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "confidential-cluster",
+			Name:      "trusted-execution-cluster",
 			Namespace: args.namespace,
 		},
-		Spec: v1alpha1.ConfidentialClusterSpec{
+		Spec: v1alpha1.TrustedExecutionClusterSpec{
 			TrusteeImage:        &args.trusteeImage,
 			PcrsComputeImage:    &args.pcrsComputeImage,
 			RegisterServerImage: &args.registerServerImage,
@@ -142,14 +142,14 @@ func generateConfidentialClusterCR(args *Args) error {
 
 	yamlData, err := yaml.Marshal(sample)
 	if err != nil {
-		return fmt.Errorf("failed to marshal ConfidentialCluster CR: %w", err)
+		return fmt.Errorf("failed to marshal TrustedExecutionCluster CR: %w", err)
 	}
 
-	outputPath := filepath.Join(args.outputDir, "confidential_cluster_cr.yaml")
+	outputPath := filepath.Join(args.outputDir, "trusted_execution_cluster_cr.yaml")
 	if err := os.WriteFile(outputPath, yamlData, 0644); err != nil {
-		return fmt.Errorf("failed to write confidential_cluster_cr.yaml: %w", err)
+		return fmt.Errorf("failed to write trusted_execution_cluster_cr.yaml: %w", err)
 	}
 
-	log.Printf("Generated ConfidentialCluster CR at %s", outputPath)
+	log.Printf("Generated TrustedExecutionCluster CR at %s", outputPath)
 	return nil
 }

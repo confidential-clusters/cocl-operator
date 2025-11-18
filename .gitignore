@@ -6,7 +6,7 @@
 .crates.toml
 .crates2.json
 .kubeconfig
-cocl-gen
+trusted-cluster-gen
 /bin
 /config/crd
 /config/deploy

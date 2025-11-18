@@ -13,7 +13,7 @@ spec:
               "config": {
                 "merge": [
                   {
-                    "source": "http://register-server.confidential-clusters.svc.cluster.local:8000/ignition-clevis-pin-trustee"
+                    "source": "http://register-server.trusted-execution-clusters.svc.cluster.local:8000/ignition-clevis-pin-trustee"
                   }
                 ]
               },
@@ -82,5 +82,5 @@ spec:
       volumes:
       - name: containerdisk
         containerDisk:
-          image: "quay.io/confidential-clusters/fedora-coreos-kubevirt:latest"
+          image: "quay.io/trusted-execution-clusters/fedora-coreos-kubevirt:latest"
           imagePullPolicy: Always

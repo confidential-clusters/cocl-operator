@@ -6,5 +6,5 @@ pub mod conditions;
 pub mod reference_values;
 
 mod kopium;
-pub use kopium::confidentialclusters::*;
 pub use kopium::machines::*;
+pub use kopium::trustedexecutionclusters::*;

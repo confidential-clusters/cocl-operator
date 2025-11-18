@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: CC0-1.0
 
-module io/confidentialcluster
+module io/trustedexecutioncluster
 
 go 1.24.5
 

@@ -15,7 +15,7 @@ Run the tests locally with kind:
 ```
 export RUNTIME=docker
 make cluster-up
-export REGISTRY=localhost:5000/confidential-clusters
+export REGISTRY=localhost:5000/trusted-execution-clusters
 make push
 make install-kubevirt
 make integration-tests
@@ -23,5 +23,5 @@ make integration-tests
 
 Each test can also be run independently using cargo test. Example:
 ```bash
-$ cargo test test_confidential_cluster_uninstall  -- --no-capture
+$ cargo test test_trusted_execution_cluster_uninstall  -- --no-capture
 ```
