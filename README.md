@@ -23,7 +23,7 @@ within the cluster.
 ### Prerequisites
 
 -   Rust toolchain
--   `podman` or `docker`
+-   `podman` or `docker` (set `CONTAINER_CLI` and `RUNTIME` environment variables accordingly)
 -   `kubectl`
 -   `kind`
 
@@ -42,6 +42,19 @@ $ ip route
 $ ip=192.168.122.1
 ```
 
+To use Docker:
+```bash
+export CONTAINER_CLI=docker
+export RUNTIME=docker
+```
+
+To use Podman (these exports can be omitted as Podman is the default):
+```bash
+export CONTAINER_CLI=podman
+export RUNTIME=podman
+```
+
+Then run the following commands:
 ```bash
 make cluster-up
 make REGISTRY=localhost:5000 push # optional: use BUILD_TYPE=debug
@@ -56,6 +69,19 @@ The KBS port will be forwarded to `8080` on your machine; the node register serv
 Run a VM as described in the
 [investigations](https://github.com/trusted-execution-clusters/investigations?tab=readme-ov-file#example-with-the-trusted-execution-clusters-operator-and-a-local-vm)
 repository.
+
+### Cleanup
+
+To clean up your environment after running tests, execute the following commands:
+```bash
+make cluster-cleanup
+# Note: You must use the same RUNTIME environment variable for `cluster-down`
+# that you used for `cluster-up`. For example:
+#
+# RUNTIME=docker make cluster-down
+make cluster-down
+make clean
+```
 
 ## Licenses
 
