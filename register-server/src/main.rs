@@ -35,6 +35,7 @@ fn generate_ignition(id: &str, public_addr: &str) -> IgnitionConfig {
             cert: "".to_string(),
         }],
         path: format!("default/{id}/root"),
+        initdata: None,
         // TODO add initdata, e.g.
         // #[derive(Serialize)]
         // struct Initdata {
