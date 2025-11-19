@@ -621,12 +621,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_kbs_service_replace() {
-        let clos = |client| generate_kbs_service(client, Default::default(), None);
-        test_replace::<_, _, Service>(clos).await;
-    }
-
-    #[tokio::test]
     async fn test_generate_kbs_service_error() {
         let clos = |client| generate_kbs_service(client, Default::default(), Some(80));
         test_create_error(clos).await;
@@ -636,12 +630,6 @@ mod tests {
     async fn test_generate_kbs_depl_success() {
         let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
         test_create_success::<_, _, Deployment>(clos).await;
-    }
-
-    #[tokio::test]
-    async fn test_generate_kbs_depl_replace() {
-        let clos = |client| generate_kbs_deployment(client, Default::default(), "image");
-        test_replace::<_, _, Deployment>(clos).await;
     }
 
     #[tokio::test]

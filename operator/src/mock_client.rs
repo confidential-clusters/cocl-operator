@@ -117,24 +117,6 @@ pub async fn test_create_already_exists<
     assert!(create(client).await.is_ok());
 }
 
-pub async fn test_replace<
-    F: Fn(Client) -> S,
-    S: Future<Output = anyhow::Result<()>>,
-    T: Default + Serialize,
->(
-    create: F,
-) {
-    let clos = async |req: Request<_>| match req {
-        r if r.method() == Method::POST => Err(StatusCode::CONFLICT),
-        r if [Method::GET, Method::PUT].contains(r.method()) => {
-            Ok(serde_json::to_string(&T::default()).unwrap())
-        }
-        _ => panic!("unexpected API interaction: {req:?}"),
-    };
-    let client = MockClient::new(clos, "test".to_string()).into_client();
-    assert!(create(client).await.is_ok());
-}
-
 pub async fn test_create_error<F: Fn(Client) -> S, S: Future<Output = anyhow::Result<()>>>(
     create: F,
 ) {

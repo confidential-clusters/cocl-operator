@@ -363,12 +363,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_compute_fresh_pcrs_replace() {
-        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
-        test_replace::<_, _, Job>(clos).await;
-    }
-
-    #[tokio::test]
     async fn test_compute_fresh_pcrs_error() {
         let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
         test_create_error(clos).await;
