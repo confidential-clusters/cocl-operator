@@ -26,4 +26,4 @@ serde_yaml.workspace = true
 ssh-key = { version = "0.6", features = ["rsa", "std"] }
 tokio = { workspace = true, features = ["process"] }
 uuid.workspace = true
-which = "7.0"
+which = "8.0"
