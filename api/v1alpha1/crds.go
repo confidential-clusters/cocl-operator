@@ -41,11 +41,11 @@ type TrustedExecutionClusterSpec struct {
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeImage *string `json:"trusteeImage"`
 
-	// Image reference to trusted-cluster-operator's compute-pcrs image
+	// Image reference to tec-operator's compute-pcrs image
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	PcrsComputeImage *string `json:"pcrsComputeImage"`
 
-	// Image reference to trusted-cluster-operator's register-server image
+	// Image reference to tec-operator's register-server image
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	RegisterServerImage *string `json:"registerServerImage"`
 
@@ -59,7 +59,7 @@ type TrustedExecutionClusterSpec struct {
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TrusteeKbsPort int32 `json:"trusteeKbsPort,omitempty"`
 
-	// Port that trusted-cluster-operator's register-server serves on
+	// Port that tec-operator's register-server serves on
 	// +optional
   // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	RegisterServerPort int32 `json:"registerServerPort,omitempty"`
