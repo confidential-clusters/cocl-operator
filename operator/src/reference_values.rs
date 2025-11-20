@@ -20,10 +20,12 @@ use k8s_openapi::{
 use kube::api::{DeleteParams, ObjectMeta};
 use kube::runtime::{
     controller::{Action, Controller},
+    finalizer,
+    finalizer::Event,
     watcher,
 };
 use kube::{Api, Client, Resource};
-use log::info;
+use log::{info, warn};
 use oci_client::secrets::RegistryAuth;
 use oci_spec::image::ImageConfiguration;
 use openssl::hash::{MessageDigest, hash};
@@ -35,11 +37,12 @@ use operator::{
     ControllerError, RvContextData, controller_error_policy, controller_info,
     create_or_info_if_exists,
 };
-use trusted_cluster_operator_lib::reference_values::*;
+use trusted_cluster_operator_lib::{conditions::*, reference_values::*, *};
 
 const JOB_LABEL_KEY: &str = "kind";
 const PCR_COMMAND_NAME: &str = "compute-pcrs";
 const PCR_LABEL: &str = "org.coreos.pcrs";
+const APPROVED_IMAGE_FINALIZER: &str = "finalizer.approved-image.confidential-clusters.io";
 
 /// Synchronize with compute_pcrs_cli::Output
 #[derive(Deserialize)]
@@ -79,7 +82,11 @@ async fn fetch_pcr_label(image_ref: &oci_client::Reference) -> Result<Option<Vec
         .map_err(Into::into)
 }
 
-fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> PodSpec {
+fn build_compute_pcrs_pod_spec(
+    resource_name: &str,
+    boot_image: &str,
+    pcrs_compute_image: &str,
+) -> PodSpec {
     let image_volume_name = "image";
     let image_mountpoint = PathBuf::from(format!("/{image_volume_name}"));
     let pcrs_volume_name = "pcrs";
@@ -101,6 +108,7 @@ fn build_compute_pcrs_pod_spec(boot_image: &str, pcrs_compute_image: &str) -> Po
         ("efivars", "/reference-values/efivars/qemu-ovmf/fedora-42"),
         ("mokvars", "/reference-values/mok-variables/fedora-42"),
         ("image", boot_image),
+        ("resource-name", resource_name),
     ] {
         add_flag(flag, value);
     }
@@ -196,9 +204,13 @@ fn get_job_name(boot_image: &str) -> Result<String> {
     Ok(trimmed)
 }
 
-async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Result<()> {
+async fn compute_fresh_pcrs(
+    ctx: RvContextData,
+    resource_name: &str,
+    boot_image: &str,
+) -> anyhow::Result<()> {
     let job_name = get_job_name(boot_image)?;
-    let pod_spec = build_compute_pcrs_pod_spec(boot_image, &ctx.pcrs_compute_image);
+    let pod_spec = build_compute_pcrs_pod_spec(resource_name, boot_image, &ctx.pcrs_compute_image);
     let job = Job {
         metadata: ObjectMeta {
             name: Some(job_name.clone()),
@@ -222,46 +234,114 @@ async fn compute_fresh_pcrs(ctx: RvContextData, boot_image: &str) -> anyhow::Res
     Ok(())
 }
 
-pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()> {
+async fn image_reconcile(
+    image: Arc<ApprovedImage>,
+    ctx: Arc<RvContextData>,
+) -> Result<Action, ControllerError> {
+    let kube_client = ctx.client.clone();
+    let err = "ApprovedImage had no name";
+    let name = image.metadata.name.clone().expect(err);
+
+    let images: Api<ApprovedImage> = Api::default_namespaced(kube_client);
+    let finalizer_ctx = Arc::unwrap_or_clone(ctx);
+    finalizer(&images, APPROVED_IMAGE_FINALIZER, image, |ev| async {
+        match ev {
+            Event::Apply(image) => image_add_reconcile(finalizer_ctx, &image).await,
+            Event::Cleanup(_) => disallow_image(finalizer_ctx, &name)
+                .await
+                .map(|_| Action::await_change())
+                .map_err(|e| finalizer::Error::<ControllerError>::CleanupFailed(e.into())),
+        }
+    })
+    .await
+    .map_err(|e| anyhow!("failed to reconcile on image: {e}").into())
+}
+
+async fn image_add_reconcile(
+    ctx: RvContextData,
+    image: &ApprovedImage,
+) -> Result<Action, finalizer::Error<ControllerError>> {
+    let kube_client = ctx.client.clone();
+    let name = image.metadata.name.as_ref().unwrap();
+    let (action, reason) = match handle_new_image(ctx, name, &image.spec.reference).await {
+        Ok(reason) => (Action::await_change(), reason),
+        Err(e) => {
+            warn!("PCR computation for {name} failed: {e}");
+            let action = Action::requeue(Duration::from_secs(60));
+            (action, NOT_COMMITTED_REASON_FAILED)
+        }
+    };
+    let committed = committed_condition(reason, image.metadata.generation);
+    let conditions = Some(vec![committed]);
+    let images: Api<ApprovedImage> = Api::default_namespaced(kube_client);
+    update_status!(images, &name, ApprovedImageStatus { conditions })
+        .map_err(|e| finalizer::Error::<ControllerError>::ApplyFailed(e.into()))?;
+    Ok(action)
+}
+
+pub async fn launch_rv_image_controller(ctx: RvContextData) {
+    let images: Api<ApprovedImage> = Api::default_namespaced(ctx.client.clone());
+    tokio::spawn(
+        Controller::new(images, Default::default())
+            .run(image_reconcile, controller_error_policy, Arc::new(ctx))
+            .for_each(controller_info),
+    );
+}
+
+pub async fn handle_new_image(
+    ctx: RvContextData,
+    resource_name: &str,
+    boot_image: &str,
+) -> Result<&'static str> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
-    if image_pcrs.0.contains_key(boot_image) {
-        return Ok(());
+    if let Some(pcr) = image_pcrs.0.get(resource_name) {
+        if pcr.reference == boot_image {
+            info!("Image {boot_image} was to be allowed, but already was allowed");
+            return trustee::update_reference_values(ctx)
+                .await
+                .map(|_| COMMITTED_REASON);
+        }
     }
     let image_ref: oci_client::Reference = boot_image.parse()?;
     if image_ref.digest().is_none() {
-        return Err(anyhow!(
+        warn!(
             "Image {boot_image} did not specify a digest. \
              Only images with a digest are supported to avoid ambiguity."
-        ));
+        );
+        return Ok(NOT_COMMITTED_REASON_NO_DIGEST);
     }
     let label = fetch_pcr_label(&image_ref).await?;
     if label.is_none() {
-        return compute_fresh_pcrs(ctx, boot_image).await;
+        return compute_fresh_pcrs(ctx, resource_name, boot_image)
+            .await
+            .map(|_| NOT_COMMITTED_REASON_COMPUTING);
     }
 
     let image_pcr = ImagePcr {
         first_seen: Utc::now(),
         pcrs: label.unwrap(),
+        reference: boot_image.to_string(),
     };
-    image_pcrs.0.insert(boot_image.to_string(), image_pcr);
+    image_pcrs.0.insert(resource_name.to_string(), image_pcr);
     let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
     let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
     image_pcrs_map.data = Some(data);
     config_maps
         .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
         .await?;
-    trustee::update_reference_values(ctx).await
+    trustee::update_reference_values(ctx)
+        .await
+        .map(|_| COMMITTED_REASON)
 }
 
-#[allow(dead_code)]
-pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> {
+pub async fn disallow_image(ctx: RvContextData, resource_name: &str) -> Result<()> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client.clone());
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let mut image_pcrs = get_image_pcrs(image_pcrs_map.clone())?;
-    if image_pcrs.0.remove(boot_image).is_none() {
-        info!("Image {boot_image} was to be disallowed, but already was not allowed");
+    if image_pcrs.0.remove(resource_name).is_none() {
+        info!("Image {resource_name} was to be disallowed, but already was not allowed");
     }
 
     let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
@@ -369,19 +449,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_compute_fresh_pcrs_success() {
-        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
+        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "image", "registry");
         test_create_success::<_, _, Job>(clos).await;
     }
 
     #[tokio::test]
     async fn test_compute_fresh_pcrs_replace() {
-        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
+        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "image", "registry");
         test_replace::<_, _, Job>(clos).await;
     }
 
     #[tokio::test]
     async fn test_compute_fresh_pcrs_error() {
-        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "registry");
+        let clos = |client| compute_fresh_pcrs(generate_rv_ctx(client), "image", "registry");
         test_create_error(clos).await;
     }
 

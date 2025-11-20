@@ -25,4 +25,12 @@ resources:
   kind: Machine
   path: io/trustedexecutioncluster/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: io
+  group: confidential-clusters
+  kind: ApprovedImage
+  path: io/confidentialcluster/api/v1alpha1
+  version: v1alpha1
 version: "3"

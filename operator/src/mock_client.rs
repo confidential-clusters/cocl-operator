@@ -165,6 +165,7 @@ pub fn dummy_pcrs() -> ImagePcrs {
                     parts: vec![],
                 },
             ],
+            reference: "ref".to_string(),
         },
     )]))
 }

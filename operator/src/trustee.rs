@@ -378,7 +378,41 @@ pub async fn generate_kbs_deployment(
 mod tests {
     use super::*;
     use crate::mock_client::*;
+    use compute_pcrs_lib::Pcr;
     use http::{Method, Request, StatusCode};
+
+    fn dummy_pcrs() -> ImagePcrs {
+        ImagePcrs(BTreeMap::from([(
+            "cos".to_string(),
+            ImagePcr {
+                first_seen: Utc::now(),
+                pcrs: vec![
+                    Pcr {
+                        id: 0,
+                        value: "pcr0_val".to_string(),
+                        parts: vec![],
+                    },
+                    Pcr {
+                        id: 1,
+                        value: "pcr1_val".to_string(),
+                        parts: vec![],
+                    },
+                ],
+                reference: "".to_string(),
+            },
+        )]))
+    }
+
+    fn dummy_pcrs_map() -> ConfigMap {
+        let data = BTreeMap::from([(
+            PCR_CONFIG_FILE.to_string(),
+            serde_json::to_string(&dummy_pcrs()).unwrap(),
+        )]);
+        ConfigMap {
+            data: Some(data),
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn test_get_image_pcrs_success() {

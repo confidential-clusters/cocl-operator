@@ -11,7 +11,7 @@ use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Api, Client};
 use std::collections::BTreeMap;
 
-use trusted_cluster_operator_lib::reference_values::*;
+use trusted_cluster_operator_lib::{conditions::INSTALLED_REASON, reference_values::*, *};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -28,6 +28,9 @@ struct Args {
     /// Path to directory storing MokListRT, MokListTrustedRT and MokListXRT
     #[arg(short, long)]
     mokvars: String,
+    /// ApprovedImage resource name
+    #[arg(short, long)]
+    resource_name: String,
     /// Image reference
     #[arg(short, long)]
     image: String,
@@ -44,7 +47,7 @@ async fn main() -> Result<()> {
     ];
 
     let client = Client::try_default().await?;
-    let config_maps: Api<ConfigMap> = Api::default_namespaced(client);
+    let config_maps: Api<ConfigMap> = Api::default_namespaced(client.clone());
 
     let mut image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let image_pcrs_data = image_pcrs_map
@@ -57,9 +60,10 @@ async fn main() -> Result<()> {
 
     let image_pcr = ImagePcr {
         first_seen: Utc::now(),
+        reference: args.image,
         pcrs,
     };
-    image_pcrs.0.insert(args.image, image_pcr);
+    image_pcrs.0.insert(args.resource_name.clone(), image_pcr);
 
     let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
     let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
@@ -67,5 +71,12 @@ async fn main() -> Result<()> {
     config_maps
         .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
         .await?;
+
+    let approved_images: Api<ApprovedImage> = Api::default_namespaced(client);
+    let image = approved_images.get(&args.resource_name).await?;
+    let committed = committed_condition(INSTALLED_REASON, image.metadata.generation);
+    let conditions = Some(vec![committed]);
+    let status = ApprovedImageStatus { conditions };
+    update_status!(approved_images, &args.resource_name, status)?;
     Ok(())
 }

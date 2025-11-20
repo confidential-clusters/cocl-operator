@@ -10,7 +10,6 @@ use anyhow::{Context, Result};
 use env_logger::Env;
 use futures_util::StreamExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, OwnerReference};
-use kube::api::Patch;
 use kube::{Api, Client, Resource};
 use kube::{
     api::ObjectMeta,
@@ -20,8 +19,8 @@ use kube::{
     },
 };
 use log::{error, info, warn};
-use trusted_cluster_operator_lib::conditions::*;
 use trusted_cluster_operator_lib::{TrustedExecutionCluster, TrustedExecutionClusterStatus};
+use trusted_cluster_operator_lib::{conditions::*, update_status};
 
 mod conditions;
 #[cfg(test)]
@@ -31,17 +30,7 @@ mod register_server;
 mod trustee;
 
 use crate::conditions::*;
-
-// tagged as 42.20250705.3.0
-const BOOT_IMAGE: &str = "quay.io/trusted-execution-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5";
-
-macro_rules! update_status {
-    ($api:ident, $name:ident, $status:expr) => {{
-        let patch = Patch::Merge(serde_json::json!({"status": $status}));
-        $api.patch_status($name, &Default::default(), &patch).await
-            .map_err(Into::<anyhow::Error>::into)?;
-    }}
-}
+use operator::*;
 
 fn is_installed(status: Option<TrustedExecutionClusterStatus>) -> bool {
     let chk = |c: &Condition| c.type_ == INSTALLED_CONDITION && c.status == "True";
@@ -54,7 +43,7 @@ fn is_installed(status: Option<TrustedExecutionClusterStatus>) -> bool {
 async fn reconcile(
     cluster: Arc<TrustedExecutionCluster>,
     client: Arc<Client>,
-) -> Result<Action, operator::ControllerError> {
+) -> Result<Action, ControllerError> {
     let generation = cluster.metadata.generation;
     let known_address = cluster.spec.public_trustee_addr.is_some();
     let address_condition = known_trustee_address_condition(known_address, generation);
@@ -69,7 +58,7 @@ async fn reconcile(
         info!("Registered deletion of TrustedExecutionCluster {name}");
         let condition = installed_condition(NOT_INSTALLED_REASON_UNINSTALLING, generation);
         conditions.as_mut().unwrap().push(condition);
-        update_status!(clusters, name, TrustedExecutionClusterStatus { conditions });
+        update_status!(clusters, name, TrustedExecutionClusterStatus { conditions })?;
         return Ok(Action::await_change());
     }
 
@@ -87,7 +76,7 @@ async fn reconcile(
         );
         let condition = installed_condition(NOT_INSTALLED_REASON_NON_UNIQUE, generation);
         conditions.as_mut().unwrap().push(condition);
-        update_status!(clusters, name, TrustedExecutionClusterStatus { conditions });
+        update_status!(clusters, name, TrustedExecutionClusterStatus { conditions })?;
         return Ok(Action::requeue(Duration::from_secs(60)));
     }
 
@@ -98,13 +87,13 @@ async fn reconcile(
     let status = TrustedExecutionClusterStatus {
         conditions: installing,
     };
-    update_status!(clusters, name, status);
+    update_status!(clusters, name, status)?;
 
     install_trustee_configuration(kube_client.clone(), &cluster).await?;
     install_register_server(kube_client, &cluster).await?;
     let condition = installed_condition(INSTALLED_REASON, generation);
     conditions.as_mut().unwrap().push(condition);
-    update_status!(clusters, name, TrustedExecutionClusterStatus { conditions });
+    update_status!(clusters, name, TrustedExecutionClusterStatus { conditions })?;
     Ok(Action::await_change())
 }
 
@@ -132,23 +121,16 @@ async fn install_trustee_configuration(
         Err(e) => error!("Failed to create the KBS configuration configmap: {e}"),
     }
 
-    let rv_ctx = operator::RvContextData {
+    let rv_ctx = RvContextData {
         client: client.clone(),
         owner_reference: owner_reference.clone(),
         pcrs_compute_image: cluster.spec.pcrs_compute_image.clone(),
     };
+    reference_values::launch_rv_image_controller(rv_ctx.clone()).await;
     reference_values::launch_rv_job_controller(rv_ctx.clone()).await;
     match reference_values::create_pcrs_config_map(client.clone(), owner_reference.clone()).await {
         Ok(_) => info!("Created bare configmap for PCRs"),
         Err(e) => error!("Failed to create the PCRs configmap: {e}"),
-    }
-
-    // TODO machine config input
-    match reference_values::handle_new_image(rv_ctx, BOOT_IMAGE).await {
-        Ok(_) => info!("Computed or retrieved reference values for image: {BOOT_IMAGE}",),
-        Err(e) => {
-            error!("Failed to compute or retrieve reference values for image {BOOT_IMAGE}: {e}",)
-        }
     }
 
     match trustee::generate_attestation_policy(client.clone(), owner_reference.clone()).await {
@@ -208,8 +190,8 @@ async fn main() -> Result<()> {
 
     let client = Arc::new(kube_client);
     Controller::new(cl, watcher::Config::default())
-        .run(reconcile, operator::controller_error_policy, client)
-        .for_each(operator::controller_info)
+        .run(reconcile, controller_error_policy, client)
+        .for_each(controller_info)
         .await;
 
     Ok(())

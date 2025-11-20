@@ -14,4 +14,10 @@ const (
 	KnownTrusteeAddressCondition string = "KnownTrusteeAddress"
 	KnownTrusteeAddressReason string = "AddressFound"
 	UnknownTrusteeAddressReason string = "NoAddressFound"
+
+	CommittedCondition string = "Committed"
+	CommittedReason string = "Committed"
+	NotCommittedReasonComputing string = "Computing"
+	NotCommittedReasonNoDigest string = "NoDigestGiven"
+	NotCommittedReasonFailed string = "ComputationFailed"
 )

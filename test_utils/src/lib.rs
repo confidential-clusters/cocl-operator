@@ -43,6 +43,27 @@ macro_rules! test_info {
     }}
 }
 
+macro_rules! kube_apply {
+    ($file:expr, $test_name:expr, $log:literal $(, $kustomize:literal)?) => {
+        test_info!($test_name, $log);
+        #[allow(unused_mut)]
+        let mut opt = "-f";
+        $(
+            if $kustomize {
+                opt = "-k";
+            }
+        )?
+        let apply_output = Command::new("kubectl")
+            .args(["apply", opt, $file])
+            .output()
+            .await?;
+        if !apply_output.status.success() {
+            let stderr = String::from_utf8_lossy(&apply_output.stderr);
+            return Err(anyhow::anyhow!("{} failed: {}", $log, stderr));
+        }
+    }
+}
+
 static INIT: Once = Once::new();
 
 pub struct TestContext {
@@ -285,7 +306,9 @@ impl TestContext {
                 "-trustee-image",
                 "quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711",
                 "-register-server-image",
-                "localhost:5000/trusted-execution-clusters/registration-server:latest"
+                "localhost:5000/trusted-execution-clusters/registration-server:latest",
+                "-approved-image",
+                "quay.io/trusted-execution-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5",
             ])
             .output()
             .await?;
@@ -312,16 +335,7 @@ impl TestContext {
                 "TrustedExecutionCluster CRD already exists, skipping CRD creation"
             );
         } else {
-            test_info!(&self.test_name, "Applying CRDs");
-            let crd_apply_output = Command::new("kubectl")
-                .args(["apply", "-f", crd_temp_dir_str])
-                .output()
-                .await?;
-
-            if !crd_apply_output.status.success() {
-                let stderr = String::from_utf8_lossy(&crd_apply_output.stderr);
-                return Err(anyhow::anyhow!("Failed to apply CRDs: {stderr}"));
-            }
+            kube_apply!(crd_temp_dir_str, &self.test_name, "Applying CRDs");
         }
 
         test_info!(&self.test_name, "Preparing RBAC manifests");
@@ -385,33 +399,18 @@ resources:
         let temp_kustomization_path = rbac_temp_dir.join("kustomization.yaml");
         std::fs::write(&temp_kustomization_path, kustomization_content)?;
 
-        test_info!(&self.test_name, "Applying RBAC");
-        let rbac_apply_output = Command::new("kubectl")
-            .args(["apply", "-k", rbac_temp_dir_str])
-            .output()
-            .await?;
+        kube_apply!(rbac_temp_dir_str, &self.test_name, "Applying RBAC", true);
 
-        if !rbac_apply_output.status.success() {
-            let stderr = String::from_utf8_lossy(&rbac_apply_output.stderr);
-            return Err(anyhow::anyhow!("Failed to apply RBAC: {stderr}"));
-        }
-
-        test_info!(&self.test_name, "Applying operator manifest");
         let manifests_path = Path::new(&self.manifests_dir);
         let operator_manifest_path = manifests_path.join("operator.yaml");
         let operator_manifest_str = operator_manifest_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid operator manifest path"))?;
-
-        let operator_output = Command::new("kubectl")
-            .args(["apply", "-f", operator_manifest_str])
-            .output()
-            .await?;
-
-        if !operator_output.status.success() {
-            let stderr = String::from_utf8_lossy(&operator_output.stderr);
-            return Err(anyhow::anyhow!("Failed to apply operator.yaml: {stderr}"));
-        }
+        kube_apply!(
+            operator_manifest_str,
+            &self.test_name,
+            "Applying operator manifest"
+        );
 
         test_info!(
             &self.test_name,
@@ -441,21 +440,20 @@ resources:
             trustee_addr
         );
 
-        test_info!(&self.test_name, "Applying CR manifest");
         let cr_manifest_str = cr_manifest_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid CR manifest path"))?;
-        let cr_output = Command::new("kubectl")
-            .args(["apply", "-f", cr_manifest_str])
-            .output()
-            .await?;
+        kube_apply!(cr_manifest_str, &self.test_name, "Applying CR manifest");
 
-        if !cr_output.status.success() {
-            let stderr = String::from_utf8_lossy(&cr_output.stderr);
-            return Err(anyhow::anyhow!(
-                "Failed to apply trusted_execution_cluster_cr.yaml: {stderr}"
-            ));
-        }
+        let approved_image_path = manifests_path.join("approved_image_cr.yaml");
+        let approved_image_str = approved_image_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid ApprovedImage manifest path"))?;
+        kube_apply!(
+            approved_image_str,
+            &self.test_name,
+            "Applying ApprovedImage manifest"
+        );
 
         let deployments_api: Api<Deployment> = Api::namespaced(self.client.clone(), &ns);
 

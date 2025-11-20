@@ -26,6 +26,8 @@ COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:$(TAG)
 REG_SERVER_IMAGE=$(REGISTRY)/registration-server:$(TAG)
 # TODO add support for TPM AK verification, then move to a KBS with implemented verifier
 TRUSTEE_IMAGE ?= quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711
+# tagged as 42.20250705.3.0
+APPROVED_IMAGE ?= quay.io/trusted-execution-clusters/fedora-coreos@sha256:e71dad00aa0e3d70540e726a0c66407e3004d96e045ab6c253186e327a2419e5
 
 BUILD_TYPE ?= release
 
@@ -68,7 +70,8 @@ manifests: trusted-cluster-gen
 		-image $(OPERATOR_IMAGE) \
 		-trustee-image $(TRUSTEE_IMAGE) \
 		-pcrs-compute-image $(COMPUTE_PCRS_IMAGE) \
-		-register-server-image $(REG_SERVER_IMAGE)
+		-register-server-image $(REG_SERVER_IMAGE) \
+		-approved-image $(APPROVED_IMAGE)
 
 cluster-up:
 	scripts/create-cluster-kind.sh
@@ -108,6 +111,7 @@ endif
 	$(KUBECTL) apply -f config/crd
 	$(KUBECTL) apply -k config/rbac
 	$(KUBECTL) apply -f $(DEPLOY_PATH)/trusted_execution_cluster_cr.yaml
+	$(KUBECTL) apply -f $(DEPLOY_PATH)/approved_image_cr.yaml
 	$(KUBECTL) apply -f kind/register-forward.yaml
 	$(KUBECTL) apply -f kind/kbs-forward.yaml
 

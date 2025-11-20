@@ -15,6 +15,7 @@ pub const PCR_CONFIG_FILE: &str = "image-pcrs.json";
 pub struct ImagePcr {
     pub first_seen: DateTime<Utc>,
     pub pcrs: Vec<Pcr>,
+    pub reference: String,
 }
 
 #[derive(Default, Deserialize, Serialize)]

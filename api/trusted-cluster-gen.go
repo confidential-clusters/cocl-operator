@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +28,7 @@ type Args struct {
 	trusteeImage        string
 	pcrsComputeImage    string
 	registerServerImage string
+	approvedImage       string
 }
 
 func main() {
@@ -37,14 +39,24 @@ func main() {
 	flag.StringVar(&args.trusteeImage, "trustee-image", "operators", "Container image with all-in-one Trustee")
 	flag.StringVar(&args.pcrsComputeImage, "pcrs-compute-image", "quay.io/trusted-execution-clusters/compute-pcrs:latest", "Container image with the Trusted Execution Clusters compute-pcrs binary")
 	flag.StringVar(&args.registerServerImage, "register-server-image", "quay.io/trusted-execution-clusters/register-server:latest", "Register server image to use in the deployment")
+	flag.StringVar(&args.approvedImage, "approved-image", "", "When set, defines an initial approved image. Must be a bootable container image with SHA reference.")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags)
+
+	if err := os.MkdirAll(args.outputDir, 0755); err != nil {
+		log.Fatalf("Failed to create output directory %s: %v", args.outputDir, err)
+		os.Exit(1)
+	}
+
 	if err := generateOperator(&args); err != nil {
 		log.Fatalf("Failed to generate operator: %v", err)
 	}
 	if err := generateTrustedExecutionClusterCR(&args); err != nil {
 		log.Fatalf("Failed to generate TrustedExecutionCluster CR: %v", err)
+	}
+	if err := generateApprovedImageCR(&args); err != nil {
+		log.Fatalf("Failed to generate ApprovedImage CR: %v", err)
 	}
 }
 
@@ -64,8 +76,7 @@ func generateOperator(args *Args) error {
 	}
 
 	name := "trusted-cluster-operator"
-	appLabel := "trusted-cluster-operator"
-	labels := map[string]string{"app": appLabel}
+	labels := map[string]string{"app": name}
 	replicas := int32(1)
 
 	templateSpec := corev1.PodTemplateSpec{
@@ -106,22 +117,18 @@ func generateOperator(args *Args) error {
 		return fmt.Errorf("failed to marshal deployment: %w", err)
 	}
 
-	if err := os.MkdirAll(args.outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
 	outputPath := filepath.Join(args.outputDir, "operator.yaml")
-	combinedYAML := fmt.Sprintf("%s\n---\n%s", nsYAML, operatorYAML)
-
-	if err := os.WriteFile(outputPath, []byte(combinedYAML), 0644); err != nil {
-		return fmt.Errorf("failed to write operator.yaml: %w", err)
+	operatorResources := []string{string(nsYAML), string(operatorYAML)}
+	if err := writeResources(outputPath, operatorResources); err != nil {
+		return fmt.Errorf("failed to write %s: %v", outputPath, err)
 	}
 
-	log.Printf("Generated operator deployment and namespace at '%s'", outputPath)
+	log.Printf("Generated operator deployment and namespace at %s", outputPath)
 	return nil
 }
 
 func generateTrustedExecutionClusterCR(args *Args) error {
-	sample := &v1alpha1.TrustedExecutionCluster{
+	cluster := &v1alpha1.TrustedExecutionCluster{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: v1alpha1.GroupVersion.String(),
 			Kind:       "TrustedExecutionCluster",
@@ -140,16 +147,52 @@ func generateTrustedExecutionClusterCR(args *Args) error {
 		},
 	}
 
-	yamlData, err := yaml.Marshal(sample)
+	clusterYAML, err := yaml.Marshal(cluster)
 	if err != nil {
 		return fmt.Errorf("failed to marshal TrustedExecutionCluster CR: %w", err)
 	}
 
 	outputPath := filepath.Join(args.outputDir, "trusted_execution_cluster_cr.yaml")
-	if err := os.WriteFile(outputPath, yamlData, 0644); err != nil {
-		return fmt.Errorf("failed to write trusted_execution_cluster_cr.yaml: %w", err)
+	if err := writeResources(outputPath, []string{string(clusterYAML)}); err != nil {
+		return fmt.Errorf("failed to write %s: %v", outputPath, err)
 	}
 
 	log.Printf("Generated TrustedExecutionCluster CR at %s", outputPath)
 	return nil
+}
+
+func generateApprovedImageCR(args *Args) error {
+	if args.approvedImage == "" {
+		return nil
+	}
+
+	approvedImage := &v1alpha1.ApprovedImage{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1alpha1.GroupVersion.String(),
+			Kind:       "ApprovedImage",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "coreos",
+			Namespace: args.namespace,
+		},
+		Spec: v1alpha1.ApprovedImageSpec{
+			Reference: &args.approvedImage,
+		},
+	}
+
+	approvedImageYAML, err := yaml.Marshal(approvedImage)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ApprovedImage CR: %v", err)
+	}
+
+	outputPath := filepath.Join(args.outputDir, "approved_image_cr.yaml")
+	if err := writeResources(outputPath, []string{string(approvedImageYAML)}); err != nil {
+		return fmt.Errorf("failed to write %s: %v", outputPath, err)
+	}
+	log.Printf("Generated ApprovedImage CR at %s", outputPath)
+	return nil
+}
+
+func writeResources(path string, resources []string) error {
+	return os.WriteFile(path, []byte(strings.Join(resources, "---\n")), 0644)
 }
