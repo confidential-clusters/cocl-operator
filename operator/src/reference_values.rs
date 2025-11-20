@@ -35,7 +35,7 @@ use operator::{
     ControllerError, RvContextData, controller_error_policy, controller_info,
     create_or_info_if_exists,
 };
-use trusted_cluster_operator_lib::reference_values::*;
+use trusted_cluster_operator_lib::{reference_values::*, update_image_pcrs};
 
 const JOB_LABEL_KEY: &str = "kind";
 const PCR_COMMAND_NAME: &str = "compute-pcrs";
@@ -246,12 +246,7 @@ pub async fn handle_new_image(ctx: RvContextData, boot_image: &str) -> Result<()
         pcrs: label.unwrap(),
     };
     image_pcrs.0.insert(boot_image.to_string(), image_pcr);
-    let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
-    let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
-    image_pcrs_map.data = Some(data);
-    config_maps
-        .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
-        .await?;
+    update_image_pcrs!(config_maps, image_pcrs_map, image_pcrs);
     trustee::update_reference_values(ctx).await
 }
 
@@ -263,13 +258,7 @@ pub async fn disallow_image(ctx: RvContextData, boot_image: &str) -> Result<()> 
     if image_pcrs.0.remove(boot_image).is_none() {
         info!("Image {boot_image} was to be disallowed, but already was not allowed");
     }
-
-    let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
-    let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
-    image_pcrs_map.data = Some(data);
-    config_maps
-        .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
-        .await?;
+    update_image_pcrs!(config_maps, image_pcrs_map, image_pcrs);
     trustee::update_reference_values(ctx).await
 }
 
