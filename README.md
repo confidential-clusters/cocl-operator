@@ -44,7 +44,7 @@ $ ip=192.168.122.1
 
 ```bash
 make cluster-up
-make REGISTRY=localhost:5000 push # optional: use BUILD_TYPE=debug
+make REGISTRY=localhost:5000 PUSH_FLAGS="--tls-verify=false" push # optional: use BUILD_TYPE=debug
 make REGISTRY=localhost:5000 manifests
 make TRUSTEE_ADDR=$ip install
 ```
