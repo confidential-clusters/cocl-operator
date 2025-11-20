@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-.PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
+.PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release release-tarball
 
 NAMESPACE ?= trusted-execution-clusters
 
@@ -91,6 +91,10 @@ push: image
 	podman push $(OPERATOR_IMAGE) $(PUSH_FLAGS)
 	podman push $(COMPUTE_PCRS_IMAGE) $(PUSH_FLAGS)
 	podman push $(REG_SERVER_IMAGE) $(PUSH_FLAGS)
+
+
+release-tarball: manifests
+	tar -cf trusted-execution-operator-$(TAG).tar config
 
 install: $(YQ)
 ifndef TRUSTEE_ADDR
