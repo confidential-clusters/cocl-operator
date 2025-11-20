@@ -19,9 +19,10 @@ KOPIUM_VERSION ?= 0.21.3
 KOPIUM ?= $(LOCALBIN)/kopium-$(KOPIUM_VERSION)
 
 REGISTRY ?= quay.io/trusted-execution-clusters
-OPERATOR_IMAGE=$(REGISTRY)/trusted-cluster-operator:latest
-COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:latest
-REG_SERVER_IMAGE=$(REGISTRY)/registration-server:latest
+TAG ?= latest
+OPERATOR_IMAGE=$(REGISTRY)/trusted-cluster-operator:$(TAG)
+COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:$(TAG)
+REG_SERVER_IMAGE=$(REGISTRY)/registration-server:$(TAG)
 # TODO add support for TPM AK verification, then move to a KBS with implemented verifier
 TRUSTEE_IMAGE ?= quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711
 
