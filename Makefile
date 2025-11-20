@@ -20,6 +20,7 @@ KOPIUM ?= $(LOCALBIN)/kopium-$(KOPIUM_VERSION)
 
 REGISTRY ?= quay.io/trusted-execution-clusters
 TAG ?= latest
+PUSH_FLAGS ?=
 OPERATOR_IMAGE=$(REGISTRY)/trusted-cluster-operator:$(TAG)
 COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:$(TAG)
 REG_SERVER_IMAGE=$(REGISTRY)/registration-server:$(TAG)
@@ -86,11 +87,10 @@ image:
 	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
 	podman build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
 
-# TODO: remove the tls-verify, right now we are pushing only on the local registry
 push: image
-	podman push $(OPERATOR_IMAGE) --tls-verify=false
-	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
-	podman push $(REG_SERVER_IMAGE) --tls-verify=false
+	podman push $(OPERATOR_IMAGE) $(PUSH_FLAGS)
+	podman push $(COMPUTE_PCRS_IMAGE) $(PUSH_FLAGS)
+	podman push $(REG_SERVER_IMAGE) $(PUSH_FLAGS)
 
 install: $(YQ)
 ifndef TRUSTEE_ADDR
