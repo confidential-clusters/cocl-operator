@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-.PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release
+.PHONY: all build build-tools crds-rs generate manifests cluster-up cluster-down image push install-trustee install clean fmt-check clippy lint test test-release release-tarball
 
 NAMESPACE ?= trusted-execution-clusters
 
@@ -19,9 +19,11 @@ KOPIUM_VERSION ?= 0.21.3
 KOPIUM ?= $(LOCALBIN)/kopium-$(KOPIUM_VERSION)
 
 REGISTRY ?= quay.io/trusted-execution-clusters
-OPERATOR_IMAGE=$(REGISTRY)/trusted-cluster-operator:latest
-COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:latest
-REG_SERVER_IMAGE=$(REGISTRY)/registration-server:latest
+TAG ?= latest
+PUSH_FLAGS ?=
+OPERATOR_IMAGE=$(REGISTRY)/trusted-cluster-operator:$(TAG)
+COMPUTE_PCRS_IMAGE=$(REGISTRY)/compute-pcrs:$(TAG)
+REG_SERVER_IMAGE=$(REGISTRY)/registration-server:$(TAG)
 # TODO add support for TPM AK verification, then move to a KBS with implemented verifier
 TRUSTEE_IMAGE ?= quay.io/trusted-execution-clusters/key-broker-service:tpm-verifier-built-in-as-20250711
 
@@ -85,11 +87,14 @@ image:
 	podman build --build-arg build_type=$(BUILD_TYPE) -t $(COMPUTE_PCRS_IMAGE) -f compute-pcrs/Containerfile .
 	podman build --build-arg build_type=$(BUILD_TYPE) -t $(REG_SERVER_IMAGE) -f register-server/Containerfile .
 
-# TODO: remove the tls-verify, right now we are pushing only on the local registry
 push: image
-	podman push $(OPERATOR_IMAGE) --tls-verify=false
-	podman push $(COMPUTE_PCRS_IMAGE) --tls-verify=false
-	podman push $(REG_SERVER_IMAGE) --tls-verify=false
+	podman push $(OPERATOR_IMAGE) $(PUSH_FLAGS)
+	podman push $(COMPUTE_PCRS_IMAGE) $(PUSH_FLAGS)
+	podman push $(REG_SERVER_IMAGE) $(PUSH_FLAGS)
+
+
+release-tarball: manifests
+	tar -cf trusted-execution-operator-$(TAG).tar config
 
 install: $(YQ)
 ifndef TRUSTEE_ADDR
