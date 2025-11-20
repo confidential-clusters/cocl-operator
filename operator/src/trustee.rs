@@ -8,7 +8,6 @@ use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, TimeDelta, Utc};
 use clevis_pin_trustee_lib::Key as ClevisKey;
-use json_patch::{AddOperation, PatchOperation, TestOperation};
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, ContainerPort, EmptyDirVolumeSource, PodSpec,
@@ -19,8 +18,7 @@ use k8s_openapi::apimachinery::pkg::{
     apis::meta::v1::{LabelSelector, OwnerReference},
     util::intstr::IntOrString,
 };
-use kube::api::{ObjectMeta, Patch};
-use kube::{Api, Client, Resource};
+use kube::{Api, Client, Resource, api::ObjectMeta};
 use log::info;
 use operator::{RvContextData, create_or_info_if_exists};
 use serde::{Serialize, Serializer};
@@ -91,25 +89,16 @@ pub async fn update_reference_values(ctx: RvContextData) -> Result<()> {
     let config_maps: Api<ConfigMap> = Api::default_namespaced(ctx.client);
     let image_pcrs_map = config_maps.get(PCR_CONFIG_MAP).await?;
     let reference_values = recompute_reference_values(get_image_pcrs(image_pcrs_map)?);
+    let rv_json = serde_json::to_string(&reference_values)?;
 
-    let existing_data = config_maps.get(TRUSTEE_DATA_MAP).await?;
+    let mut trustee_map = config_maps.get(TRUSTEE_DATA_MAP).await?;
     let err = format!("ConfigMap {TRUSTEE_DATA_MAP} existed, but had no data");
-    let existing_data_map = existing_data.data.context(err)?;
-    let err = format!("ConfigMap {TRUSTEE_DATA_MAP} existed, but had no reference values");
-    let existing_rvs = existing_data_map.get(REFERENCE_VALUES_FILE).context(err)?;
+    let trustee_data = trustee_map.data.as_mut().context(err)?;
+    trustee_data.insert(REFERENCE_VALUES_FILE.to_string(), rv_json);
 
-    let path = jsonptr::PointerBuf::parse(format!("/data/{REFERENCE_VALUES_FILE}"))?;
-    let test_patch = PatchOperation::Test(TestOperation {
-        path: path.clone(),
-        value: JsonString(existing_rvs.clone()),
-    });
-    let add_patch = PatchOperation::Add(AddOperation {
-        path,
-        value: JsonString(serde_json::to_string(&reference_values)?),
-    });
-    let patch: Patch<ConfigMap> = Patch::Json(json_patch::Patch(vec![test_patch, add_patch]));
-    let params = &Default::default();
-    config_maps.patch(TRUSTEE_DATA_MAP, params, &patch).await?;
+    config_maps
+        .replace(TRUSTEE_DATA_MAP, &Default::default(), &trustee_map)
+        .await?;
     info!("Recomputed reference values");
     Ok(())
 }
@@ -488,26 +477,6 @@ mod tests {
         let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
         let err = update_reference_values(ctx).await.err().unwrap();
         assert!(err.to_string().contains("but had no data"));
-    }
-
-    #[tokio::test]
-    async fn test_update_rvs_no_file() {
-        let clos = async |req: Request<_>| match req {
-            r if r.uri().path().contains(PCR_CONFIG_MAP) => {
-                Ok(serde_json::to_string(&dummy_pcrs_map()).unwrap())
-            }
-            r if r.uri().path().contains(TRUSTEE_DATA_MAP) => {
-                Ok(serde_json::to_string(&ConfigMap {
-                    data: Some(BTreeMap::new()),
-                    ..Default::default()
-                })
-                .unwrap())
-            }
-            _ => panic!("unexpected API interaction: {req:?}"),
-        };
-        let ctx = generate_rv_ctx(MockClient::new(clos, "test".to_string()).into_client());
-        let err = update_reference_values(ctx).await.err().unwrap();
-        assert!(err.to_string().contains("but had no reference values"));
     }
 
     #[test]
