@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Yalan Zhang <yalzhang@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+FROM scratch
+COPY manifests/ /manifests/
+COPY metadata/ /metadata/

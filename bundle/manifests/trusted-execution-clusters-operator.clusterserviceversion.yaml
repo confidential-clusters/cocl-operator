@@ -1,0 +1,137 @@
+# SPDX-FileCopyrightText: Yalan Zhang <yalzhang@redhat.com>
+#
+# SPDX-License-Identifier: CC0-1.0
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    olm.skipRange: ">=0.0.0 <1.0.0"
+    containerImage: "quay.io/trusted-execution-clusters/tec-operator:v0.0.1"
+    capabilities: BasicInstall
+  name: tec-operator.v0.0.1
+  namespace: placeholder
+spec:
+  displayName: Trusted Execution Cluster Operator
+  description: An operator to manage trusted execution cluster, which are Kubernetes cluster that can attest their integrity to a relying party.
+  version: 0.0.1
+  maturity: alpha
+  installModes:
+  - type: AllNamespaces
+    supported: true
+  install:
+    strategy: deployment
+    spec:
+      permissions:
+      - serviceAccountName: tec-operator
+        rules:
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          - services
+          - endpoints
+          - persistentvolumeclaims
+          - events
+          - configmaps
+          - secrets
+          verbs:
+          - '*'
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - daemonsets
+          - replicasets
+          - statefulsets
+          verbs:
+          - '*'
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - servicemonitors
+          verbs:
+          - get
+          - create
+        - apiGroups:
+          - confidential-clusters.io
+          resources:
+          - confidentialclusters
+          - machines
+          verbs:
+          - '*'
+      deployments:
+      - name: tec-operator
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              name: tec-operator
+          template:
+            metadata:
+              labels:
+                name: tec-operator
+            spec:
+              securityContext:
+                runAsNonRoot: true
+              serviceAccountName: tec-operator
+              containers:
+                - name: tec-operator
+                  image: quay.io/trusted-execution-clusters/tec-operator:v0.0.1
+                  command:
+                  - tec-operator
+                  args:
+                  - --health-probe-bind-address=:8081
+                  - --metrics-bind-address=127.0.0.1:8080
+                  - --leader-elect
+                  imagePullPolicy: IfNotPresent
+                  env:
+                    - name: WATCH_NAMESPACE
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.namespace
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                    - name: OPERATOR_NAME
+                      value: "tec-operator"
+                    - name: COMPUTE_PCR_IMAGE
+                      value: "quay.io/trusted-execution-clusters/tec-compute-pcrs:v0.0.1"
+                    - name: REGISTER_SERVER_IMAGE
+                      value: "quay.io/trusted-execution-clusters/tec-register-server:v0.0.1"
+                  livenessProbe:
+                    httpGet:
+                      path: /healthz
+                      port: 8081
+                    initialDelaySeconds: 15
+                    periodSeconds: 20
+                  readinessProbe:
+                    httpGet:
+                      path: /readyz
+                      port: 8081
+                    initialDelaySeconds: 5
+                    periodSeconds: 10
+                  resources:
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+                    requests:
+                      cpu: 100m
+                      memory: 128Mi
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    capabilities:
+                      drop:
+                      - ALL
+  customresourcedefinitions:
+    owned:
+    - name: confidentialclusters.confidential-clusters.io
+      version: v1alpha1
+      kind: ConfidentialCluster
+      displayName: Trusted Execution Cluster
+      description: Represents a trusted execution cluster.
+    - name: machines.confidential-clusters.io
+      version: v1alpha1
+      kind: Machine
+      displayName: Machine
+      description: Represents a machine in a trusted execution cluster.
