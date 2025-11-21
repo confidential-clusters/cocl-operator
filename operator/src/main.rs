@@ -252,52 +252,55 @@ mod tests {
 
     #[tokio::test]
     async fn test_reconcile_uninstalling() {
-        let clos = async |req: Request<Body>| match req {
-            r if r.method() == Method::GET => Ok(serde_json::to_string(&dummy_cluster()).unwrap()),
-            r if r.method() == Method::PATCH => {
-                assert_body_contains(r, NOT_INSTALLED_REASON_UNINSTALLING).await;
+        let clos = async |req: Request<Body>, ctr| match req.method() {
+            &Method::PATCH => {
+                assert_body_contains(req, NOT_INSTALLED_REASON_UNINSTALLING).await;
                 Ok(serde_json::to_string(&dummy_cluster()).unwrap())
             }
-            _ => panic!("unexpected API interaction: {req:?}"),
+            _ => panic!("unexpected API interaction: {req:?}, counter {ctr}"),
         };
-        let client = Arc::new(MockClient::new(clos, "test".to_string()).into_client());
-        let mut cluster = dummy_cluster();
-        cluster.metadata.deletion_timestamp = Some(Time(Utc::now()));
-        let result = reconcile(Arc::new(cluster), client).await.unwrap();
-        assert_eq!(result, Action::await_change());
+        count_check!(1, clos, |client| {
+            let mut cluster = dummy_cluster();
+            cluster.metadata.deletion_timestamp = Some(Time(Utc::now()));
+            let result = reconcile(Arc::new(cluster), Arc::new(client)).await;
+            assert_eq!(result.unwrap(), Action::await_change());
+        });
     }
 
     #[tokio::test]
     async fn test_reconcile_non_unique() {
-        let clos = async |req: Request<_>| match req {
-            r if r.method() == Method::GET => {
+        let clos = async |req: Request<_>, ctr| {
+            if ctr == 0 && req.method() == Method::GET {
                 let object_list = ObjectList::<TrustedExecutionCluster> {
                     items: vec![dummy_cluster(), dummy_cluster()],
                     types: Default::default(),
                     metadata: Default::default(),
                 };
                 Ok(serde_json::to_string(&object_list).unwrap())
-            }
-            r if r.method() == Method::PATCH => {
-                assert_body_contains(r, NOT_INSTALLED_REASON_NON_UNIQUE).await;
+            } else if ctr == 1 && req.method() == Method::PATCH {
+                assert_body_contains(req, NOT_INSTALLED_REASON_NON_UNIQUE).await;
                 Ok(serde_json::to_string(&dummy_cluster()).unwrap())
+            } else {
+                panic!("unexpected API interaction: {req:?}, counter {ctr}");
             }
-            _ => panic!("unexpected API interaction: {req:?}"),
         };
-        let client = Arc::new(MockClient::new(clos, "test".to_string()).into_client());
-        let result = reconcile(Arc::new(dummy_cluster()), client).await.unwrap();
-        assert_eq!(result, Action::requeue(Duration::from_secs(60)));
+        count_check!(2, clos, |client| {
+            let cluster = Arc::new(dummy_cluster());
+            let result = reconcile(cluster, Arc::new(client)).await;
+            assert_eq!(result.unwrap(), Action::requeue(Duration::from_secs(60)));
+        });
     }
 
     #[tokio::test]
     async fn test_reconcile_error() {
-        let clos = async |req: Request<_>| match req {
+        let clos = async |req: Request<_>, _| match req {
             r if r.method() == Method::GET => Err(StatusCode::INTERNAL_SERVER_ERROR),
             _ => panic!("unexpected API interaction: {req:?}"),
         };
-        let client = MockClient::new(clos, "test".to_string()).into_client();
-        let cluster = dummy_cluster();
-        let result = reconcile(Arc::new(cluster), Arc::new(client)).await;
-        assert!(result.is_err());
+        count_check!(1, clos, |client| {
+            let cluster = Arc::new(dummy_cluster());
+            let result = reconcile(cluster, Arc::new(client)).await;
+            assert!(result.is_err());
+        });
     }
 }

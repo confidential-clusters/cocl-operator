@@ -9,9 +9,8 @@ use clap::Parser;
 use compute_pcrs_lib::*;
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Api, Client};
-use std::collections::BTreeMap;
 
-use trusted_cluster_operator_lib::reference_values::*;
+use trusted_cluster_operator_lib::{reference_values::*, update_image_pcrs};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -60,12 +59,6 @@ async fn main() -> Result<()> {
         pcrs,
     };
     image_pcrs.0.insert(args.image, image_pcr);
-
-    let image_pcrs_json = serde_json::to_string(&image_pcrs)?;
-    let data = BTreeMap::from([(PCR_CONFIG_FILE.to_string(), image_pcrs_json.to_string())]);
-    image_pcrs_map.data = Some(data);
-    config_maps
-        .replace(PCR_CONFIG_MAP, &Default::default(), &image_pcrs_map)
-        .await?;
+    update_image_pcrs!(config_maps, image_pcrs_map, image_pcrs);
     Ok(())
 }

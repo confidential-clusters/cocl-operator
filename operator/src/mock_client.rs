@@ -10,8 +10,11 @@ use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{Client, client::Body, error::ErrorResponse};
 use operator::RvContextData;
 use serde::Serialize;
-use std::{collections::BTreeMap, convert::Infallible};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
 use tower::service_fn;
+
+use crate::trustee;
 use trusted_cluster_operator_lib::reference_values::{ImagePcr, ImagePcrs, PCR_CONFIG_FILE};
 
 macro_rules! assert_kube_api_error {
@@ -30,6 +33,19 @@ macro_rules! assert_kube_api_error {
         }
     }};
 }
+
+macro_rules! count_check {
+    ($expected:literal, $closure:ident, |$client:ident| $body:block) => {
+        use std::sync::atomic;
+        let count = std::sync::Arc::new(atomic::AtomicU32::new(0));
+        let $client = MockClient::new($closure, "test".to_string(), count.clone()).into_client();
+        $body
+        assert_eq!(count.load(atomic::Ordering::Acquire), $expected, "Endpoint call count mismatch");
+    }
+}
+
+pub(crate) use assert_kube_api_error;
+pub(crate) use count_check;
 
 async fn create_response<T: Future<Output = Result<String, StatusCode>>>(
     response: T,
@@ -58,33 +74,34 @@ async fn create_response<T: Future<Output = Result<String, StatusCode>>>(
     Ok(Response::builder().status(status_code).body(body).unwrap())
 }
 
-pub(crate) use assert_kube_api_error;
-
 pub struct MockClient<F, T>
 where
-    F: Fn(Request<Body>) -> T + Send + Sync + 'static,
+    F: Fn(Request<Body>, u32) -> T + Send + Sync + 'static,
     T: Future<Output = Result<String, StatusCode>> + Send + 'static,
 {
     response_closure: F,
     namespace: String,
+    request_count: Arc<AtomicU32>,
 }
 
 impl<F, T> MockClient<F, T>
 where
-    F: Fn(Request<Body>) -> T + Send + Sync + 'static,
+    F: Fn(Request<Body>, u32) -> T + Send + Sync + 'static,
     T: Future<Output = Result<String, StatusCode>> + Send + 'static,
 {
-    pub fn new(response_closure: F, namespace: String) -> Self {
+    pub fn new(response_closure: F, namespace: String, request_count: Arc<AtomicU32>) -> Self {
         Self {
             response_closure,
             namespace,
+            request_count,
         }
     }
 
     pub fn into_client(self) -> Client {
         let namespace = self.namespace.clone();
         let mock_svc = service_fn(move |req: Request<Body>| {
-            let response = (self.response_closure)(req);
+            let response = (self.response_closure)(req, self.request_count.load(Ordering::Acquire));
+            self.request_count.fetch_add(1, Ordering::AcqRel);
             create_response(response)
         });
         Client::new(mock_svc, namespace)
@@ -98,9 +115,10 @@ pub async fn test_create_success<
 >(
     create: F,
 ) {
-    let clos = async |_| Ok(serde_json::to_string(&T::default()).unwrap());
-    let client = MockClient::new(clos, "test".to_string()).into_client();
-    assert!(create(client).await.is_ok());
+    let clos = async |_, _| Ok(serde_json::to_string(&T::default()).unwrap());
+    count_check!(1, clos, |client| {
+        assert!(create(client).await.is_ok());
+    });
 }
 
 pub async fn test_create_already_exists<
@@ -109,43 +127,27 @@ pub async fn test_create_already_exists<
 >(
     create: F,
 ) {
-    let clos = async |req: Request<_>| match req {
+    let clos = async |req: Request<_>, _| match req {
         r if r.method() == Method::POST => Err(StatusCode::CONFLICT),
         _ => panic!("unexpected API interaction: {req:?}"),
     };
-    let client = MockClient::new(clos, "test".to_string()).into_client();
-    assert!(create(client).await.is_ok());
-}
-
-pub async fn test_replace<
-    F: Fn(Client) -> S,
-    S: Future<Output = anyhow::Result<()>>,
-    T: Default + Serialize,
->(
-    create: F,
-) {
-    let clos = async |req: Request<_>| match req {
-        r if r.method() == Method::POST => Err(StatusCode::CONFLICT),
-        r if [Method::GET, Method::PUT].contains(r.method()) => {
-            Ok(serde_json::to_string(&T::default()).unwrap())
-        }
-        _ => panic!("unexpected API interaction: {req:?}"),
-    };
-    let client = MockClient::new(clos, "test".to_string()).into_client();
-    assert!(create(client).await.is_ok());
+    count_check!(1, clos, |client| {
+        assert!(create(client).await.is_ok());
+    });
 }
 
 pub async fn test_create_error<F: Fn(Client) -> S, S: Future<Output = anyhow::Result<()>>>(
     create: F,
 ) {
-    let clos = async |req: Request<_>| match req {
-        r if r.method() == Method::POST => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    let clos = async |req: Request<_>, _| match req.method() {
+        &Method::POST => Err(StatusCode::INTERNAL_SERVER_ERROR),
         _ => panic!("unexpected API interaction: {req:?}"),
     };
-    let client = MockClient::new(clos, "test".to_string()).into_client();
-    let err = create(client).await.unwrap_err();
-    let msg = "internal server error";
-    assert_kube_api_error!(err, 500, "ServerTimeout", msg, "Failure");
+    count_check!(1, clos, |client| {
+        let err = create(client).await.unwrap_err();
+        let msg = "internal server error";
+        assert_kube_api_error!(err, 500, "ServerTimeout", msg, "Failure");
+    });
 }
 
 pub fn dummy_pcrs() -> ImagePcrs {
@@ -167,6 +169,16 @@ pub fn dummy_pcrs() -> ImagePcrs {
             ],
         },
     )]))
+}
+
+pub fn dummy_trustee_map() -> ConfigMap {
+    ConfigMap {
+        data: Some(BTreeMap::from([(
+            trustee::REFERENCE_VALUES_FILE.to_string(),
+            "[]".to_string(),
+        )])),
+        ..Default::default()
+    }
 }
 
 pub fn dummy_pcrs_map() -> ConfigMap {
